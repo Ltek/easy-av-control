@@ -1,5 +1,20 @@
 # Changelog
 
+## v2026.11.20.5
+
+**Added**
+- **Detect integrations** in the panel, any time: new AV devices no room uses (one per physical device, with the
+  best integration for each job, its outlet, and the activities to add it to at the place its profile gives in
+  the power-on order), better integrations for devices in rooms, missing entities with a replacement from the
+  same device, renamed entities, and integrations without a profile. Apply shows the result as unsaved changes.
+- **Starter activities** for new rooms: one per source, with the room's displays and audio.
+- **+ Profile** for an integration without one: a draft from its device, and **Learn**, which records what the
+  device shows while you turn it on and off and fills in its states.
+- **Wait for a picture** step (`wait_picture`): waits for the device's picture check (Lumagen *Active Video*);
+  added automatically with a Lumagen. `on_failure: {picture: warn | stop}`.
+- Easy AV Control remembers each entity a room uses (`.storage/easy_av_control.seen`), so a removed or renamed
+  one can still be traced to its device. The Repair for a missing entity points to Detect integrations.
+
 ## v2026.11.20.4
 
 **Added**

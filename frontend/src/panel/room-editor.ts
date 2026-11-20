@@ -556,6 +556,9 @@ export class EasyAvControlRoomEditor extends LitElement {
             { name: "timeout_off", selector: slider(900, 5, 5) },
             { name: "on_failure_off", selector: { select: { mode: "dropdown", options: offFailures } } },
             { name: "debounce", selector: slider(30, 0.5) },
+            ...(detect?.found?.picture
+              ? [{ name: "on_failure_picture", selector: { select: { mode: "dropdown", options: options("failure", ["warn", "stop"]) } } }]
+              : []),
           ]
         : []),
     ];

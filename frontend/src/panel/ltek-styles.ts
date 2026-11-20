@@ -350,6 +350,12 @@ export const ltekChrome = css`
     filter: brightness(1.1);
     background: var(--ltek-c-accent);
   }
+  button.ltek-btn:disabled,
+  button.ltek-add:disabled {
+    opacity: 0.4;
+    cursor: default;
+    filter: none;
+  }
   button.ltek-btn.danger {
     color: var(--ltek-c-error);
     border-color: var(--ltek-c-error);

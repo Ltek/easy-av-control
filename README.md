@@ -324,6 +324,26 @@ a built-in profile to change it, edit yours as YAML, and **Export** / **Import**
 profile for an integration is used instead of the built-in one; a device can also name one with `profile: <id>`.
 Each device page shows what was **detected** for it, with **Use these** for the remote and outlet it found.
 
+### Detect integrations
+
+**Detect integrations** in the panel compares what's installed with what the rooms use. Run it any time: after
+adding an integration, after removing one, or on a first setup. Each change has a checkbox; **Apply** shows the
+result as unsaved changes, and nothing is stored until **Save**.
+
+| Section | What it offers |
+|---|---|
+| New devices | AV devices no room uses yet, for the room of their Home Assistant area (or a new room), with the best integration for each job (a TV with PiPup, ADB and Android TV Remote is one device: PiPup for its state, ADB for the arrow keys), its outlet, and the activities to add it to, at the place its profile gives in the power-on order. A device with a picture check (Lumagen) gets a **Wait for a picture** step. New rooms can get **starter activities**, one per source |
+| Better integrations | A device a room uses that another integration now covers better. Not ticked |
+| Missing entities | Entities a room uses that no longer exist. When the same device is still covered by another integration, it's offered as the replacement |
+| Renamed entities | The same entity under a new ID: replaced everywhere except in actions and commands |
+| Integrations without a profile | **+ Profile** starts a draft from the integration's device; **Learn** records what it shows while you turn it on and off and fills in its states |
+
+A Repair for a missing entity points here too.
+
+**Wait for a picture** (`type: wait_picture`, with `device`) waits until the device's picture check passes
+(Lumagen *Active Video*), up to its `timeout`. When there's no picture in time, `on_failure: {picture: …}`
+decides: `warn` (default) or `stop`.
+
 **The room's select** starts and stops in the background, so whoever sets it (an automation, Plex Center's room
 hook) follows the room's sensor instead of waiting minutes for the select. The `start_activity` and
 `stop_activity` actions still wait until the room is done.

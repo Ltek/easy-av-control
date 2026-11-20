@@ -38,6 +38,7 @@ from .const import (
 )
 from .control import activity_list, describe_command, remote_view, route_summary
 from .coordinator import EasyAVControlCoordinator, related_setting_entities
+from .detect import apply_detect, async_get_seen, detect_all, draft_profile
 from .device_profiles import ROLES, best_for_role, physical_devices, resolve
 from .device_state import effective_source, wait_mode
 from .flow import plan_start, plan_stop
@@ -82,6 +83,9 @@ def async_register(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_profiles_duplicate)
     websocket_api.async_register_command(hass, ws_profiles_export)
     websocket_api.async_register_command(hass, ws_profiles_import)
+    websocket_api.async_register_command(hass, ws_detect_all)
+    websocket_api.async_register_command(hass, ws_detect_apply)
+    websocket_api.async_register_command(hass, ws_profiles_draft)
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/control/rooms"})
@@ -623,3 +627,56 @@ async def ws_profiles_import(
         connection.send_result(msg["id"], {"error": _invalid(err)})
         return
     connection.send_result(msg["id"], {"error": None, **result})
+
+
+# ------------------------------------------------------------------------------------------- detect integrations
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): f"{DOMAIN}/config/detect_all", vol.Required("rooms"): dict}
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_detect_all(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """What Detect integrations proposes for the rooms as being edited. Changes nothing."""
+    library = await async_get_library(hass)
+    seen = await async_get_seen(hass)
+    seen.remember(msg["rooms"])
+    connection.send_result(msg["id"], detect_all(hass, library.profiles, msg["rooms"], seen))
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/config/detect_apply",
+        vol.Required("rooms"): dict,
+        vol.Required("choices"): dict,
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_detect_apply(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """The rooms with the ticked changes applied; the panel shows them as unsaved changes."""
+    library = await async_get_library(hass)
+    connection.send_result(
+        msg["id"], {"rooms": apply_detect(hass, library.profiles, msg["rooms"], msg["choices"])}
+    )
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): f"{DOMAIN}/profiles/draft", vol.Required("integration"): str}
+)
+@websocket_api.require_admin
+@callback
+def ws_profiles_draft(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """A starting point for a profile of an integration without one."""
+    draft = draft_profile(hass, msg["integration"])
+    if draft is None:
+        connection.send_error(msg["id"], "not_found", f"No media player or remote of {msg['integration']}")
+        return
+    connection.send_result(msg["id"], draft)

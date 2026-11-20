@@ -8,6 +8,7 @@
 import { LitElement, css, html, nothing, type PropertyValues, type TemplateResult } from "lit";
 
 import type { ProfileView } from "./panel/device-state";
+import "./panel/detect";
 import "./panel/guide";
 import { REPO, ltekChrome, ltekTokens } from "./panel/ltek-styles";
 import "./panel/profiles";
@@ -31,7 +32,8 @@ type Banner =
   | { kind: "invalid"; path: string; message: string }
   | { kind: "missing"; missing: Missing[] }
   | { kind: "conflict" }
-  | { kind: "saved" };
+  | { kind: "saved" }
+  | { kind: "applied" };
 
 /** ha-form and its selectors are loaded lazily by HA; make sure they exist. */
 async function loadHaElements(): Promise<void> {
@@ -59,6 +61,7 @@ export class EasyAvControlPanel extends LitElement {
     _adding: { state: true },
     _profiles: { state: true },
     _page: { state: true },
+    _draftFor: { state: true },
   };
 
   declare hass: HomeAssistant;
@@ -75,7 +78,9 @@ export class EasyAvControlPanel extends LitElement {
   /** Every profile, for the Profiles page and the device pages' profile picker */
   declare _profiles: ProfileView[];
   /** Rooms (the selected one) or the Profiles page */
-  declare _page: "room" | "profiles";
+  declare _page: "room" | "profiles" | "detect";
+  /** An integration to start a + Profile draft for (from Detect integrations) */
+  declare _draftFor?: string;
 
   private _entryId?: string;
   private _revision?: string;
@@ -320,7 +325,10 @@ export class EasyAvControlPanel extends LitElement {
           </button>`,
         )}
         ${this._renderAddRoom()}
-        <div class="nav-title library">${this._t("profiles")}</div>
+        <div class="nav-title library">${this._t("setup")}</div>
+        <button class="room ${this._page === "detect" ? "active" : ""}" @click=${() => (this._page = "detect")}>
+          <ha-icon icon="mdi:auto-fix"></ha-icon> ${this._t("detect")}
+        </button>
         <button class="room ${this._page === "profiles" ? "active" : ""}" @click=${() => (this._page = "profiles")}>
           <ha-icon icon="mdi:package-variant-closed"></ha-icon> ${this._t("profiles")}
         </button>
@@ -328,10 +336,29 @@ export class EasyAvControlPanel extends LitElement {
       <main>
         <easy-av-control-guide .language=${this.hass.language}></easy-av-control-guide>
         ${this._renderBanner()}
-        ${this._page === "profiles"
+        ${this._page === "detect"
+          ? html`<easy-av-control-detect
+              .hass=${this.hass}
+              .rooms=${this._rooms}
+              @rooms-changed=${(ev: CustomEvent<{ rooms: Rooms }>) => {
+                this._rooms = ev.detail.rooms;
+                if (!this._selected || !(this._selected in ev.detail.rooms)) {
+                  this._selected = Object.keys(ev.detail.rooms)[0];
+                }
+                this._page = "room";
+                this._banner = { kind: "applied" };
+              }}
+              @create-profile=${(ev: CustomEvent<{ integration: string }>) => {
+                this._draftFor = ev.detail.integration;
+                this._page = "profiles";
+              }}
+            ></easy-av-control-detect>`
+          : this._page === "profiles"
           ? html`<easy-av-control-profiles
               .hass=${this.hass}
               .profiles=${this._profiles}
+              .draftFor=${this._draftFor}
+              @draft-opened=${() => (this._draftFor = undefined)}
               @profiles-changed=${() => this._loadProfiles()}
             ></easy-av-control-profiles>`
           : selected
@@ -363,6 +390,8 @@ export class EasyAvControlPanel extends LitElement {
     switch (banner.kind) {
       case "saved":
         return html`<div class="banner ok">${this._t("saved")}</div>`;
+      case "applied":
+        return html`<div class="banner warning">${this._t("detect_applied")}</div>`;
       case "invalid":
         return html`<div class="banner error">
           ${this._t("invalid", { path: banner.path || "–", message: banner.message })}

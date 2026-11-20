@@ -65,7 +65,7 @@ export function defaults(detect: Detect | undefined): { timeout_on: number; time
   };
 }
 
-function failure(device: Device, check: "turn_on" | "turn_off"): string {
+function failure(device: Device, check: "turn_on" | "turn_off" | "picture"): string {
   const raw = device.on_failure as string | Record<string, string> | undefined;
   if (raw && typeof raw === "object") {
     return raw[check] ?? "warn";
@@ -87,6 +87,7 @@ export function stateFormData(device: Device, detect: Detect | undefined): Obj {
     debounce: (device.debounce as number | undefined) ?? d.debounce,
     on_failure_on: failure(device, "turn_on"),
     on_failure_off: failure(device, "turn_off"),
+    on_failure_picture: failure(device, "picture"),
   };
 }
 
@@ -112,9 +113,15 @@ export function applyStateForm(device: Device, values: Obj, detect: Detect | und
   if (values.debounce !== undefined && Number(values.debounce) !== d.debounce) out.debounce = Number(values.debounce);
   const on = (values.on_failure_on as string) || "warn";
   const off = (values.on_failure_off as string) || "warn";
-  if (on === off && on !== "warn") out.on_failure = on;
-  else if (on !== off) {
-    out.on_failure = { ...(on !== "warn" ? { turn_on: on } : {}), ...(off !== "warn" ? { turn_off: off } : {}) };
+  const picture = (values.on_failure_picture as string) || "warn";
+  if (on === off && off === picture) {
+    if (on !== "warn") out.on_failure = on;
+  } else {
+    out.on_failure = {
+      ...(on !== "warn" ? { turn_on: on } : {}),
+      ...(off !== "warn" ? { turn_off: off } : {}),
+      ...(picture !== "warn" ? { picture } : {}),
+    };
   }
   return out;
 }
@@ -163,4 +170,37 @@ export function profileSummary(profile: ProfileView, t: Translate): string[] {
     .map(([role]) => t(`role.${role}`));
   if (roles.length) lines.push(t("sum_roles", { roles: roles.join(", ") }));
   return lines;
+}
+
+const NOT_A_STATE = new Set(["unavailable", "unknown", ""]);
+
+/**
+ * Learn: what a device showed while it was turned on, and while it was turned off, as state groups.
+ * Turning on: the first value is "off", the last "on", any in between "starting"; turning off the other way round.
+ * A device whose entity is unavailable while it's off gets ``available_is_on``.
+ */
+export function learnGroups(onSeq: string[], offSeq: string[]): Obj {
+  const groups: Record<string, string[]> = {};
+  const add = (group: string, value: string | undefined) => {
+    if (value === undefined || NOT_A_STATE.has(value)) return;
+    (groups[group] ??= []).includes(value) || groups[group].push(value);
+  };
+  const out: Obj = {};
+  if (onSeq.length) {
+    if (onSeq.length > 1) add("off", onSeq[0]);
+    onSeq.slice(1, -1).forEach((v) => add("starting", v));
+    add("on", onSeq[onSeq.length - 1]);
+    if (onSeq[0] === "unavailable") out.available_is_on = true;
+  }
+  if (offSeq.length) {
+    if (offSeq.length > 1) add("on", offSeq[0]);
+    offSeq.slice(1, -1).forEach((v) => add("stopping", v));
+    add("off", offSeq[offSeq.length - 1]);
+    if (offSeq[offSeq.length - 1] === "unavailable") out.available_is_on = true;
+  }
+  for (const group of ["starting", "stopping"]) {
+    groups[group] = (groups[group] ?? []).filter((v) => !groups.on?.includes(v) && !groups.off?.includes(v));
+    if (!groups[group].length) delete groups[group];
+  }
+  return { ...out, ...groups };
 }

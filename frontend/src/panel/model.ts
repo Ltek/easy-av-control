@@ -64,6 +64,7 @@ export const STEP_TYPES = [
   "call_action",
   "delay",
   "wait_available",
+  "wait_picture",
 ] as const;
 
 export const GROUPS = ["volume", "channels", "transport", "navigation"] as const;
@@ -219,6 +220,7 @@ export function stepSchema(
       { name: "data", selector: { object: {} } },
     ],
     delay: [],
+    wait_picture: [deviceField, { name: "timeout", selector: { number: { min: 5, max: 300, step: 5, mode: "slider", unit_of_measurement: "s" } } }],
     wait_available: [
       { ...deviceField, required: false },
       { name: "entity_id", selector: { entity: {} } },

@@ -131,6 +131,19 @@ await settle(1200);
 await shotBoth('profile-export');
 await page.keyboard.press('Escape');
 
+// Detect integrations: with the demo profile deleted, the fake devices' integration has no profile
+await ws({ type: 'easy_av_control/profiles/delete', profile_id: 'av_demo' });
+await openPanel();
+await page.getByRole('button', { name: 'Detect integrations' }).click();
+await page.locator('easy-av-control-detect .ltek-btn.primary').waitFor({ timeout: 30000 });
+await settle(1500);
+await shotBoth('detect');
+// + Profile from there: a draft with Learn
+await page.locator('easy-av-control-detect button.ltek-add').first().click();
+await page.locator('easy-av-control-profiles ha-form').waitFor({ timeout: 30000 });
+await settle(2000);
+await shotBoth('profile-draft');
+
 // The card editor
 await page.evaluate(async () => {
   const ha = document.querySelector('home-assistant');

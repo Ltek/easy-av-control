@@ -1,9 +1,6 @@
 # Plan: automatic setup and device states (Easy AV Control)
 
-Status: phases 1 (2026.11.20.2), 2 (2026.11.20.3) and 3 (2026.11.20.4) built; phases 4 and 5 to do. Moved from
-phase 3 to phase 4: **+ Profile** with Learn for an integration without one (it starts from the list of unmatched
-integrations that Detect integrations shows). Not yet in phase 2: the Lumagen
-picture check (a step, added with Detect integrations in phase 4).
+Status: phases 1 to 4 built (2026.11.20.2 to .5); phase 5 (README screenshots) to do.
 
 Originally drafted 2026-11-20. Updated with your answers: wait modes, Detect integrations any time, priority order, JVC
 confirmed, Lumagen reviewed, shareable profiles, profile creation, debounce and failure handling, adding to the power-on order,

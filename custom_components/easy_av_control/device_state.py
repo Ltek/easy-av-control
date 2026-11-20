@@ -128,6 +128,22 @@ def effective_source(
     )
 
 
+def picture_source(
+    hass: HomeAssistant, profiles: dict[str, Profile], device: dict[str, Any]
+) -> tuple[StateSource, float] | None:
+    """The device's picture check (its profile's ``picture``) as a state source, with its timeout; or None."""
+    profile = profile_for_device(hass, profiles, device)
+    if profile is None or (picture := profile.data.get("picture")) is None:
+        return None
+    entity = resolve(hass, profile, device[CONF_ENTITY_ID]).picture_entity
+    if entity is None:
+        return None
+    indicator: dict[str, Any] = {"on": list(picture["ok"])}
+    if picture.get("attribute"):
+        indicator[CONF_ATTRIBUTE] = picture["attribute"]
+    return StateSource(entity, indicator, debounce=picture["debounce"], profile_id=profile.id), picture["timeout"]
+
+
 def wait_mode(device: dict[str, Any], source: StateSource | None, *, on: bool) -> str:
     """status, time or both. Status needs a state source; without one it is always time."""
     if source is None:

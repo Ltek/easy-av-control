@@ -41,12 +41,13 @@ const ICONS: Record<string, string> = {
   reload: "mdi:reload",
   ready: "mdi:lan-connect",
   status: "mdi:state-machine",
+  picture: "mdi:image-check-outline",
   already_on: "mdi:check",
   step: "mdi:tune-variant",
 };
 
 /** Rows that belong to the device or steps header above them. */
-const NESTED = new Set(["boot", "reload", "ready", "status", "turn_on", "wait", "already_on", "step", "turn_off"]);
+const NESTED = new Set(["boot", "reload", "ready", "status", "picture", "turn_on", "wait", "already_on", "step", "turn_off"]);
 
 export class EasyAvControlFlow extends LitElement {
   static properties = {
@@ -211,6 +212,13 @@ export class EasyAvControlFlow extends LitElement {
         return this._t(row.target === "off" ? "flow.status_off" : "flow.status_on", {
           device,
           entity: this._entity(row.entity_id),
+          timeout: this._seconds(row.timeout),
+        });
+      case "picture":
+        return this._t("flow.picture", {
+          step: String(row.step ?? ""),
+          entity: this._entity(row.entity_id),
+          states: ((row.states as string[] | undefined) ?? []).join(" / "),
           timeout: this._seconds(row.timeout),
         });
       case "wait":

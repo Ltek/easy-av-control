@@ -9,12 +9,13 @@
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 
 import type { HomeAssistant } from "../types";
-import { profileSummary, type ProfileView } from "./device-state";
+import { learnGroups, profileSummary, type ProfileView } from "./device-state";
 import type { Obj } from "./model";
 import { REPO, ltekChrome, ltekTokens } from "./ltek-styles";
 import { t } from "./strings";
 
-type Editing = { data: Obj; previousId: string | null; readonly: boolean; error?: string };
+type Learn = { watch: string; device: string; on: string[]; off: string[]; mode: "on" | "off" | null };
+type Editing = { data: Obj; previousId: string | null; readonly: boolean; error?: string; learn?: Learn };
 type Dialog = { mode: "export" | "import"; text: string; message?: string };
 
 export class EasyAvControlProfiles extends LitElement {
@@ -25,6 +26,8 @@ export class EasyAvControlProfiles extends LitElement {
     _editing: { state: true },
     _dialog: { state: true },
     _notice: { state: true },
+    _pick: { state: true },
+    draftFor: { attribute: false },
   };
 
   declare hass: HomeAssistant;
@@ -33,6 +36,10 @@ export class EasyAvControlProfiles extends LitElement {
   declare _editing?: Editing;
   declare _dialog?: Dialog;
   declare _notice?: string;
+  /** + Profile: the integrations without a profile, while choosing one */
+  declare _pick?: string[];
+  /** Open a + Profile draft for this integration (set by the panel from Detect integrations) */
+  declare draftFor?: string;
 
   constructor() {
     super();
@@ -45,6 +52,86 @@ export class EasyAvControlProfiles extends LitElement {
 
   private _changed(): void {
     this.dispatchEvent(new CustomEvent("profiles-changed"));
+  }
+
+  protected updated(changed: Map<string, unknown>): void {
+    if (changed.has("draftFor") && this.draftFor) {
+      const integration = this.draftFor;
+      this.dispatchEvent(new CustomEvent("draft-opened"));
+      void this._draft(integration);
+    }
+    // Learn: note each new value the watched entity shows while the device is turned on or off
+    const learn = this._editing?.learn;
+    if (changed.has("hass") && learn?.mode) {
+      const value = this.hass.states[learn.watch]?.state;
+      const seq = learn[learn.mode];
+      if (value !== undefined && seq[seq.length - 1] !== value) {
+        this._editing = { ...this._editing!, learn: { ...learn, [learn.mode]: [...seq, value] } };
+      }
+    }
+  }
+
+  private async _openPicker(): Promise<void> {
+    const result = await this.hass.callWS<{ unmatched: string[] }>({ type: "easy_av_control/config/detect_all", rooms: {} });
+    this._pick = result.unmatched;
+  }
+
+  private async _draft(integration: string): Promise<void> {
+    this._pick = undefined;
+    try {
+      const draft = await this.hass.callWS<{ profile: Obj; device_entity: string; watch: string }>({
+        type: "easy_av_control/profiles/draft",
+        integration,
+      });
+      this._notice = undefined;
+      this._editing = {
+        data: draft.profile,
+        previousId: null,
+        readonly: false,
+        learn: { watch: draft.watch, device: draft.device_entity, on: [], off: [], mode: null },
+      };
+    } catch (err) {
+      this._notice = (err as { message?: string }).message ?? String(err);
+    }
+  }
+
+  private async _learn(mode: "on" | "off"): Promise<void> {
+    const learn = this._editing!.learn!;
+    const now = this.hass.states[learn.watch]?.state;
+    this._editing = { ...this._editing!, learn: { ...learn, mode, [mode]: now !== undefined ? [now] : [] } };
+    await this.hass.callService("homeassistant", mode === "on" ? "turn_on" : "turn_off", { entity_id: learn.device });
+  }
+
+  private _useLearned(): void {
+    const editing = this._editing!;
+    const learned = learnGroups(editing.learn!.on, editing.learn!.off);
+    const indicator = { ...((editing.data.indicator as Obj | undefined) ?? {}), ...learned };
+    this._editing = { ...editing, data: { ...editing.data, indicator }, learn: { ...editing.learn!, mode: null } };
+  }
+
+  private _renderLearn(learn: Learn): TemplateResult {
+    const seen = (seq: string[]) => (seq.length ? seq.join(" → ") : "–");
+    return html`<details class="ltek-sec" open>
+      <summary><ha-icon icon="mdi:school-outline"></ha-icon>${this._t("learn")}<ha-icon class="chev" icon="mdi:chevron-down"></ha-icon></summary>
+      <div class="ltek-body">
+        <p class="ltek-hint">${this._t("learn_hint", { entity: learn.watch })}</p>
+        <div class="ltek-buttons">
+          <button class="ltek-btn ${learn.mode === "on" ? "primary" : ""}" @click=${() => this._learn("on")}>
+            <ha-icon icon="mdi:power"></ha-icon> ${this._t("learn_on")}
+          </button>
+          <button class="ltek-btn ${learn.mode === "off" ? "primary" : ""}" @click=${() => this._learn("off")}>
+            <ha-icon icon="mdi:power-off"></ha-icon> ${this._t("learn_off")}
+          </button>
+          <button class="ltek-btn" ?disabled=${!learn.on.length && !learn.off.length} @click=${this._useLearned}>
+            ${this._t("learn_use")}
+          </button>
+        </div>
+        ${learn.on.length || learn.off.length
+          ? html`<p class="ltek-hint">${this._t("learn_seen_on", { states: seen(learn.on) })}<br />
+              ${this._t("learn_seen_off", { states: seen(learn.off) })}</p>`
+          : html`<p class="ltek-hint">${this._t("learn_nothing")}</p>`}
+      </div>
+    </details>`;
   }
 
   protected render(): TemplateResult {
@@ -63,6 +150,7 @@ export class EasyAvControlProfiles extends LitElement {
         </summary>
         <div class="ltek-body">
           <div class="ltek-buttons bar">
+            <button class="ltek-add" @click=${this._openPicker}>${this._t("profile_new")}</button>
             <button class="ltek-btn" @click=${this._openImport}><ha-icon icon="mdi:import"></ha-icon> ${this._t("profile_import")}</button>
             ${yours.length
               ? html`<button class="ltek-btn" @click=${() => this._openExport(yours.map((p) => p.id))}>
@@ -70,6 +158,21 @@ export class EasyAvControlProfiles extends LitElement {
                 </button>`
               : nothing}
           </div>
+          ${this._pick
+            ? html`<div class="ltek-row pick">
+                <label class="lbl">${this._t("profile_new_pick")}</label>
+                ${this._pick.length
+                  ? html`<select @change=${(e: Event) => {
+                      const value = (e.target as HTMLSelectElement).value;
+                      if (value) void this._draft(value);
+                    }}>
+                      <option value="">–</option>
+                      ${this._pick.map((i) => html`<option value=${i}>${i}</option>`)}
+                    </select>`
+                  : nothing}
+                <span class="ltek-hint">${this._t(this._pick.length ? "profile_new_hint" : "profile_new_none")}</span>
+              </div>`
+            : nothing}
           <div class="ltek-list">
             ${yours.length ? yours.map((p) => this._row(p)) : html`<p class="ltek-hint">${this._t("profiles_none_yours")}</p>`}
           </div>
@@ -179,6 +282,7 @@ export class EasyAvControlProfiles extends LitElement {
           ? nothing
           : html`<button class="ltek-btn primary" @click=${this._save}>${this._t("profile_save")}</button>`}
       </div>
+      ${editing.learn ? this._renderLearn(editing.learn) : nothing}
       <details class="ltek-sec" open>
         <summary>
           <ha-icon icon=${editing.readonly ? "mdi:lock-outline" : "mdi:pencil"}></ha-icon>${String(editing.data.name ?? editing.data.id)}

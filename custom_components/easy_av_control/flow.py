@@ -42,10 +42,11 @@ from .const import (
     STEP_TYPE_POWER_OFF,
     STEP_TYPE_POWER_ON,
     STEP_TYPE_WAIT_AVAILABLE,
+    STEP_TYPE_WAIT_PICTURE,
 )
 from .control import action_names
 from .coordinator import can_switch, power_service, power_switches, step_service
-from .device_state import effective_source, wait_mode
+from .device_state import effective_source, picture_source, wait_mode
 from .model import CONF_DELAY_AFTER
 from .profile_library import profiles_of
 
@@ -315,6 +316,23 @@ def _step_rows(
                 )
             )
             clock.wait_up_to(step[CONF_TIMEOUT])
+        elif step_type == STEP_TYPE_WAIT_PICTURE:
+            found = picture_source(hass, profiles_of(hass), room[CONF_DEVICES][device_id])
+            if found is not None:
+                source, timeout = found
+                timeout = step.get(CONF_TIMEOUT, timeout)
+                rows.append(
+                    {
+                        "kind": "picture",
+                        "at": clock.at,
+                        "device": device_id,
+                        "entity_id": source.entity_id,
+                        "states": source.indicator["on"],
+                        "timeout": timeout,
+                        **base,
+                    }
+                )
+                clock.wait_up_to(timeout)
         elif step_type in (STEP_TYPE_POWER_ON, STEP_TYPE_POWER_OFF):
             kind = "turn_on" if step_type == STEP_TYPE_POWER_ON else "turn_off"
             rows.append(_switch_row(hass, kind, device_id, entity_id, clock.at, **base))

@@ -62,6 +62,7 @@ test("an untouched device stays byte-identical", () => {
     debounce: 2,
     on_failure_on: "warn",
     on_failure_off: "warn",
+    on_failure_picture: "warn",
   });
   assert.deepEqual(applyStateForm(device, data, DETECT), device);
 });
@@ -75,7 +76,15 @@ test("only what differs from the profile is written", () => {
 test("on_failure: one value when both are the same, per check when they differ, nothing for warn", () => {
   const device: Device = { entity_id: "remote.jvc" };
   const base = stateFormData(device, DETECT);
-  assert.equal(applyStateForm(device, { ...base, on_failure_on: "stop", on_failure_off: "stop" }, DETECT).on_failure, "stop");
+  // the picture check stays warn, so a single "stop" (which would cover it too) isn't enough
+  assert.deepEqual(applyStateForm(device, { ...base, on_failure_on: "stop", on_failure_off: "stop" }, DETECT).on_failure, {
+    turn_on: "stop",
+    turn_off: "stop",
+  });
+  assert.equal(
+    applyStateForm(device, { ...base, on_failure_on: "stop", on_failure_off: "stop", on_failure_picture: "stop" }, DETECT).on_failure,
+    "stop",
+  );
   assert.deepEqual(applyStateForm(device, { ...base, on_failure_on: "retry" }, DETECT).on_failure, { turn_on: "retry" });
   assert.equal(applyStateForm(device, base, DETECT).on_failure, undefined);
   // and it reads back
@@ -123,4 +132,41 @@ test("every new text exists in English and German", () => {
   const keys = (block: string) => new Set([...block.matchAll(/^\s{4}"?([\w.]+)"?:/gm)].map((m) => m[1]));
   const missing = [...keys(en)].filter((k) => !keys(de).has(k));
   assert.deepEqual(missing.filter((k) => /^(profile|detected|sum_|state_|wait\.|failure|field\.(wait|timeout|debounce|on_failure|profile)|flow\.status)/.test(k)), []);
+});
+
+import { learnGroups } from "../src/panel/device-state";
+
+test("Learn: a projector warming up and cooling down", () => {
+  assert.deepEqual(learnGroups(["standby", "warming", "on"], ["on", "cooling", "standby"]), {
+    off: ["standby"],
+    starting: ["warming"],
+    on: ["on"],
+    stopping: ["cooling"],
+  });
+});
+
+test("Learn: only turned on, no in-between state", () => {
+  assert.deepEqual(learnGroups(["off", "on"], []), { off: ["off"], on: ["on"] });
+  assert.deepEqual(learnGroups([], []), {});
+  assert.deepEqual(learnGroups(["on"], []), { on: ["on"] }); // already on: nothing says off
+});
+
+test("Learn: an entity that is unavailable while off", () => {
+  assert.deepEqual(learnGroups(["unavailable", "No Source"], ["No Source", "unavailable"]), {
+    available_is_on: true,
+    on: ["No Source"],
+  });
+});
+
+test("Learn: a flicker back to on while warming isn't a starting state", () => {
+  assert.deepEqual(learnGroups(["off", "on", "warming", "on"], []), { off: ["off"], starting: ["warming"], on: ["on"] });
+});
+
+test("on_failure: the picture check is kept and written per check", () => {
+  const device: Device = { entity_id: "switch.lumagen", on_failure: { picture: "stop" } };
+  const data = stateFormData(device, DETECT);
+  assert.equal(data.on_failure_picture, "stop");
+  assert.deepEqual(applyStateForm(device, data, DETECT).on_failure, { picture: "stop" });
+  assert.equal(applyStateForm(device, { ...data, on_failure_picture: "warn" }, DETECT).on_failure, undefined);
+  assert.equal(applyStateForm(device, { ...data, on_failure_on: "stop", on_failure_off: "stop" }, DETECT).on_failure, "stop");
 });

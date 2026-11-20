@@ -89,7 +89,8 @@ FAILURE_RETRY: Final = "retry"
 FAILURE_ACTIONS: Final = [FAILURE_WARN, FAILURE_STOP, FAILURE_RETRY]
 CHECK_TURN_ON: Final = "turn_on"
 CHECK_TURN_OFF: Final = "turn_off"
-CHECKS: Final = [CHECK_TURN_ON, CHECK_TURN_OFF]
+CHECK_PICTURE: Final = "picture"
+CHECKS: Final = [CHECK_TURN_ON, CHECK_TURN_OFF, CHECK_PICTURE]
 
 ON_TIMEOUT_CONTINUE: Final = "continue"
 ON_TIMEOUT_ABORT: Final = "abort"
@@ -112,6 +113,8 @@ STEP_TYPE_SET_TILT: Final = "set_tilt"
 STEP_TYPE_CALL_ACTION: Final = "call_action"
 STEP_TYPE_DELAY: Final = "delay"
 STEP_TYPE_WAIT_AVAILABLE: Final = "wait_available"
+# Wait until the device (its profile's picture check, e.g. Lumagen "Active Video") shows a picture
+STEP_TYPE_WAIT_PICTURE: Final = "wait_picture"
 
 # Activity states
 ACTIVITY_STATE_IDLE: Final = "idle"

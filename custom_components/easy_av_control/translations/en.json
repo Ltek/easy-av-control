@@ -172,7 +172,7 @@
   "issues": {
     "missing_entity": {
       "title": "Easy AV Control: entity {entity_id} is missing",
-      "description": "In room **{room}**, `{path}` refers to `{entity_id}`. This entity does not exist in Home Assistant – it was probably renamed or removed. Fix the entry in the Easy AV Control configuration."
+      "description": "In room **{room}**, `{path}` refers to `{entity_id}`. This entity does not exist in Home Assistant – it was probably renamed or removed. Fix the entry in the Easy AV Control configuration. Open **Easy AV Control → Detect integrations** in the sidebar: it offers a replacement when the same device is still covered by another integration."
     },
     "activity_aborted": {
       "title": "Easy AV Control: start of \"{activity}\" aborted",

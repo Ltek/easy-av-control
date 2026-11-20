@@ -89,6 +89,7 @@ const STRINGS = {
     "step.call_action": "Run action",
     "step.delay": "Wait",
     "step.wait_available": "Wait until available",
+    "step.wait_picture": "Wait for a picture",
   },
   de: {
     "state.idle": "Aus",
@@ -178,6 +179,7 @@ const STRINGS = {
     "step.call_action": "Aktion ausführen",
     "step.delay": "Warten",
     "step.wait_available": "Auf Verfügbarkeit warten",
+    "step.wait_picture": "Auf ein Bild warten",
   },
 } as const;
 

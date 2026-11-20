@@ -132,6 +132,7 @@ from .const import (
     STEP_TYPE_SET_TILT,
     STEP_TYPE_SET_VOLUME,
     STEP_TYPE_WAIT_AVAILABLE,
+    STEP_TYPE_WAIT_PICTURE,
     WAIT_MODES,
 )
 
@@ -303,6 +304,10 @@ STEP_SCHEMAS: dict[str, vol.Schema] = {
         }
     ),
     STEP_TYPE_DELAY: vol.Schema(_STEP_BASE),
+    # Timeout absent: the profile's (30 s for a Lumagen)
+    STEP_TYPE_WAIT_PICTURE: vol.Schema(
+        {**_DEVICE_STEP, vol.Optional(CONF_TIMEOUT): vol.All(vol.Coerce(float), vol.Range(min=1, max=3600))}
+    ),
     STEP_TYPE_WAIT_AVAILABLE: vol.All(
         vol.Schema(
             {

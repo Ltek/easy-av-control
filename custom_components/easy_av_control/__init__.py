@@ -44,6 +44,7 @@ from .const import (
     SIGNAL_ROOMS_UPDATED,
 )
 from .coordinator import EasyAVControlCoordinator
+from .detect import async_get_seen
 from .migration import migrate_v1_to_v2
 from .model import expected_unique_ids
 from .profile_library import async_get_library
@@ -236,6 +237,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     _async_remove_stale(hass, entry, coordinator.rooms)
     coordinator.async_apply_areas()
+    # What each used entity is, so Detect integrations can trace one that is removed or renamed later
+    (await async_get_seen(hass)).remember(coordinator.rooms)
     async_dispatcher_send(hass, SIGNAL_ROOMS_UPDATED)
 
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))

@@ -98,6 +98,7 @@ from .const import (
     ACTIVITY_STATE_IDLE,
     ACTIVITY_STATE_STARTING,
     ACTIVITY_STATE_STOPPING,
+    CHECK_PICTURE,
     CHECK_TURN_OFF,
     CHECK_TURN_ON,
     CONF_ACTION,
@@ -154,6 +155,7 @@ from .const import (
     STEP_TYPE_SET_TILT,
     STEP_TYPE_SET_VOLUME,
     STEP_TYPE_WAIT_AVAILABLE,
+    STEP_TYPE_WAIT_PICTURE,
     WAIT_STATUS,
     WAIT_TIME,
 )
@@ -182,6 +184,7 @@ from .device_state import (
     describe_failure,
     effective_source,
     failure_action,
+    picture_source,
     wait_mode,
 )
 from .model import CONF_DELAY_AFTER, async_validate_config, find_missing_entities
@@ -1336,6 +1339,24 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._doing(rt, "warm_up", name=name, seconds=device[CONF_DELAY_AFTER_ON])
             await self._async_sleep(device[CONF_DELAY_AFTER_ON])
 
+    async def _async_wait_picture(self, device: dict[str, Any], step: dict[str, Any]) -> None:
+        """Wait until the device shows a picture; a device without a picture check has nothing to wait for."""
+        found = picture_source(self.hass, self.profiles, device)
+        name = self._device_name(device)
+        if found is None:
+            _LOGGER.debug("%s has no picture check, nothing to wait for", name)
+            return
+        source, timeout = found
+        timeout = step.get(CONF_TIMEOUT, timeout)
+        result, value = await self._async_wait_state(_current_room.get(), device, source, GROUP_ON, timeout)
+        if result == RESULT_OK:
+            return
+        shown = f", it shows {value}" if value else ""
+        message = f"{name} has no picture after {timeout:g} s{shown}"
+        if failure_action(device, CHECK_PICTURE) == FAILURE_STOP:
+            raise ActivityAborted(message)
+        self._warn(message)
+
     def _off_wait(self, device: dict[str, Any], *, was_off: bool) -> tuple[float, StateSource | None]:
         """Before a device's outlet is cut: the fixed time left, and the state source to wait for first.
 
@@ -1661,6 +1682,9 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 f"step {step.get('id', '')}".strip(),
                 name=name,
             )
+            return
+        if step_type == STEP_TYPE_WAIT_PICTURE:
+            await self._async_wait_picture(room[CONF_DEVICES][step[CONF_DEVICE]], step)
             return
         if step_type == STEP_TYPE_POWER_ON:
             await self._async_power_on(entity_id, context)
