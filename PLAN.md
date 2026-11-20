@@ -1,6 +1,6 @@
 # Plan: automatic setup and device states (Easy AV Control)
 
-Status: phases 1 to 4 built (2026.11.20.2 to .5); phase 5 (README screenshots) to do.
+Status: all five phases built (2026.11.20.2 to .6). Open: the roadmap at the end.
 
 Originally drafted 2026-11-20. Updated with your answers: wait modes, Detect integrations any time, priority order, JVC
 confirmed, Lumagen reviewed, shareable profiles, profile creation, debounce and failure handling, adding to the power-on order,

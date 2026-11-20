@@ -1,5 +1,13 @@
 # Changelog
 
+## v2026.11.20.6
+
+**Changed**
+- **README screenshots retaken** from a real Home Assistant with the made-up demo devices, showing Easy AV
+  Control and the new panel look; new ones of a device page, the Profiles page and Detect integrations.
+- `tests/screenshots/panel_run.sh` starts a fresh Home Assistant with the demo devices and takes them (README=1
+  for the README images, else every panel page in both themes). See Development in the README.
+
 ## v2026.11.20.5
 
 **Added**

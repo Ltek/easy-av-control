@@ -20,8 +20,13 @@ const browser = await chromium.launch({
 const errors = [];
 const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, colorScheme: 'dark' });
 const page = await context.newPage();
-page.on('pageerror', (e) => errors.push(e.message));
-page.on('console', (m) => { if (m.type() === 'error' && !/favicon|manifest|service worker/i.test(m.text())) errors.push(m.text()); });
+page.on('pageerror', (e) => errors.push(`${e.message} ${JSON.stringify(e).slice(0, 300)} ${(e.stack || '').split('\n').slice(0, 3).join(' | ')} [${page.url()}]`));
+await page.addInitScript(() => window.addEventListener('unhandledrejection', (ev) => console.error('UNHANDLED', JSON.stringify(ev.reason), String(ev.reason?.stack || ''))));
+page.on('console', async (m) => {
+  if (m.type() !== 'error' || /favicon|manifest|service worker/i.test(m.text())) return;
+  const args = await Promise.all(m.args().map((x) => x.jsonValue().catch(() => '?')));
+  errors.push(`${JSON.stringify(args).slice(0, 300)} @ ${m.location().url?.split('/').pop()}:${m.location().lineNumber} [${page.url()}]`);
+});
 const settle = (ms = 1200) => page.waitForTimeout(ms);
 const ws = (msg) => page.evaluate((m) => document.querySelector('home-assistant').hass.callWS(m), msg);
 const api = (method, p, body) => page.evaluate(([m, p2, b]) => document.querySelector('home-assistant').hass.callApi(m, p2, b), [method, p, body]);

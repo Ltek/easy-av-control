@@ -80,6 +80,36 @@ The card as it looks while the activity runs. A tap shows which device gets the 
 
 ![Remote control preview in the configuration panel, dark theme](https://raw.githubusercontent.com/Ltek/easy-av-control/main/docs/images/preview-dark.png)
 
+### Device state
+
+What was detected for a device (its profile, the entity that says it's on, its state now) and how to wait for
+it: its status, a fixed time, or both, with timeouts, debounce, and what to do when it doesn't come on.
+
+<p>
+  <img src="https://raw.githubusercontent.com/Ltek/easy-av-control/main/docs/images/device.png" alt="A device page with its Detected box, light theme" width="49%">
+  <img src="https://raw.githubusercontent.com/Ltek/easy-av-control/main/docs/images/device-dark.png" alt="A device page with its Detected box, dark theme" width="49%">
+</p>
+
+### Profiles
+
+Built-in profiles (locked: duplicate one to change it) and your own, with export and import as text.
+
+<p>
+  <img src="https://raw.githubusercontent.com/Ltek/easy-av-control/main/docs/images/profiles.png" alt="The Profiles page, light theme" width="49%">
+  <img src="https://raw.githubusercontent.com/Ltek/easy-av-control/main/docs/images/profiles-dark.png" alt="The Profiles page, dark theme" width="49%">
+</p>
+
+### Detect integrations
+
+What's installed compared with what the rooms use: new devices, better integrations, missing and renamed
+entities, and integrations without a profile. (The screenshots' made-up devices have no profile, so only the last
+section shows.)
+
+<p>
+  <img src="https://raw.githubusercontent.com/Ltek/easy-av-control/main/docs/images/detect.png" alt="Detect integrations, light theme" width="49%">
+  <img src="https://raw.githubusercontent.com/Ltek/easy-av-control/main/docs/images/detect-dark.png" alt="Detect integrations, dark theme" width="49%">
+</p>
+
 ---
 
 ## Coming from Harmony
@@ -716,6 +746,18 @@ npm run build   # writes easy-av-control-card.js and easy-av-control-panel.js to
 ```
 
 The build output is committed: after changing anything in `frontend/`, run `npm run build` and commit the two built files with the change, since HACS installs straight from `main`.
+
+The screenshots are taken from a real Home Assistant with the made-up devices of `tests/screenshots/av_demo`:
+
+```bash
+# The README images (docs/images/): needs playwright, pillow and pyyaml in SHOTS_PYTHON
+README=1 SHOTS_PYTHON=/path/to/venv/bin/python PYTHON=/path/to/ha-venv/bin/python tests/screenshots/panel_run.sh
+# Every panel page in both themes, into a folder of your choice (Node, playwright-core)
+PYTHON=/path/to/ha-venv/bin/python tests/screenshots/panel_run.sh /tmp/shots
+```
+
+`PYTHON` needs `homeassistant` and `home-assistant-frontend`. `CHROME` can point to a Chromium of your own, and
+`PLAYWRIGHT_NODEJS_PATH` to your own Node when Playwright's can't start.
 
 ---
 

@@ -107,7 +107,19 @@ def activity_sensor(page: Page, timeout: float = 60) -> str:
 
 def set_up(page: Page) -> None:
     """The demo room and the dashboard, rewritten on every run so their content is known."""
-    config = ws(page, {"type": "easy_av_control/config/get"})
+    try:
+        config = ws(page, {"type": "easy_av_control/config/get"})
+    except Exception:  # noqa: BLE001 - a fresh Home Assistant: set the integration up first
+        flow = page.evaluate(
+            "() => document.querySelector('home-assistant').hass.callApi('POST', 'config/config_entries/flow',"
+            " {handler: 'easy_av_control'})"
+        )
+        page.evaluate(
+            "(id) => document.querySelector('home-assistant').hass.callApi('POST', `config/config_entries/flow/${id}`, {})",
+            flow["flow_id"],
+        )
+        page.wait_for_timeout(3000)
+        config = ws(page, {"type": "easy_av_control/config/get"})
     room = yaml.safe_load((HERE / "room.yaml").read_text())
     if config["rooms"].get(ROOM) != room:
         rooms = {**config["rooms"], ROOM: room}
@@ -237,13 +249,13 @@ def open_activity(page: Page, name: str) -> None:
     # Tall enough that a section fits without scrolling under the sticky toolbar
     open_panel(page, height=2600)
     page.get_by_role("tab", name="Activities").click()
-    page.locator("button.row-item", has_text=name).first.click()
+    page.locator("button.ltek-item", has_text=name).first.click()
     page.wait_for_timeout(1000)
 
 
 def section(page: Page, inner: str):
-    """The panel card that holds an element, with its title and hint."""
-    return page.locator("section.card", has=page.locator(inner)).first
+    """The panel section that holds an element, with its title and hint."""
+    return page.locator("details.ltek-sec", has=page.locator(inner)).first
 
 
 def panel(page: Page, theme: str) -> None:
@@ -276,7 +288,16 @@ def main() -> int:
         return 2
     OUT.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=not args.headed, args=["--no-sandbox", "--lang=en-US"])
+        browser = p.chromium.launch(
+            headless=not args.headed,
+            args=["--no-sandbox", "--lang=en-US"],
+            # CHROME: a Chromium of your own instead of Playwright's download
+            **(
+                {"executable_path": os.environ["CHROME"], "env": {**os.environ, "LD_LIBRARY_PATH": ""}}
+                if os.environ.get("CHROME")
+                else {}
+            ),
+        )
         try:
             for theme in args.theme or THEMES:
                 context = browser.new_context(viewport={"width": 1280, "height": 900}, device_scale_factor=2,

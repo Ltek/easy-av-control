@@ -28,5 +28,11 @@ kill -INT "$HA_PID"; wait "$HA_PID" 2>/dev/null || true
 HA_PID=$!
 cd "$REPO"
 for _ in $(seq 1 120); do curl -s -m 2 -o /dev/null "$HA_URL/" && break; sleep 2; done
-ROOM_JSON="$CONFIG/room.json" node "$HERE/panel_capture.mjs" || { tail -60 "$CONFIG/home-assistant.log"; exit 1; }
+if [ "${README:-}" = 1 ]; then
+  # The README images (tests/screenshots/capture.py; SHOTS_PYTHON needs playwright, pillow, pyyaml)
+  AVS_HA_URL="$HA_URL" AVS_HA_USER=demo AVS_HA_PASSWORD=demo "${SHOTS_PYTHON:-python3}" "$HERE/capture.py" \
+    || { tail -60 "$CONFIG/home-assistant.log"; exit 1; }
+else
+  ROOM_JSON="$CONFIG/room.json" node "$HERE/panel_capture.mjs" || { tail -60 "$CONFIG/home-assistant.log"; exit 1; }
+fi
 grep -E "ERROR|Traceback" "$CONFIG/home-assistant.log" | grep -i -E "easy_av_control|av_demo" | head -20 || true
