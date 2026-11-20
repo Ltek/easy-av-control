@@ -1,0 +1,21 @@
+{
+  "name": "easy-av-control-card",
+  "version": "2026.11.20.1",
+  "private": true,
+  "description": "Remote control card and configuration panel for the Easy AV Control (Ltek) integration",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "esbuild test/*.test.ts --bundle --platform=node --format=esm --outdir=.test-build --out-extension:.js=.mjs --log-level=warning && node --test .test-build/*.test.mjs",
+    "build": "npm run typecheck && esbuild src/easy-av-control-card.ts src/easy-av-control-panel.ts --bundle --minify --format=esm --target=es2021 --legal-comments=none --outdir=../custom_components/easy_av_control/frontend",
+    "watch": "esbuild src/easy-av-control-card.ts src/easy-av-control-panel.ts --bundle --format=esm --target=es2021 --watch --outdir=../custom_components/easy_av_control/frontend"
+  },
+  "dependencies": {
+    "lit": "3.3.3"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "typescript": "6.0.3"
+  }
+}

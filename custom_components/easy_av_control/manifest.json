@@ -1,0 +1,24 @@
+{
+  "domain": "easy_av_control",
+  "name": "Easy AV Control (Ltek)",
+  "after_dependencies": [
+    "frontend",
+    "lovelace",
+    "panel_custom"
+  ],
+  "codeowners": [
+    "@Ltek"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "http",
+    "websocket_api"
+  ],
+  "documentation": "https://github.com/Ltek/easy-av-control",
+  "integration_type": "hub",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/Ltek/easy-av-control/issues",
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "2026.11.20.1"
+}

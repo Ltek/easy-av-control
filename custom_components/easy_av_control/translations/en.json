@@ -1,0 +1,205 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up Easy AV Control",
+        "description": "After setup, add rooms, devices and activities in the Easy AV Control panel in the sidebar, or as YAML via \"Configure\"."
+      }
+    },
+    "abort": {
+      "already_configured": "This integration is already configured",
+      "single_instance_allowed": "Easy AV Control is already set up. All rooms live in this one entry."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Easy AV Control",
+        "menu_options": {
+          "select_room": "Edit room",
+          "add_room": "Add room",
+          "delete_room": "Delete room",
+          "edit_all": "Edit whole configuration (YAML)"
+        }
+      },
+      "select_room": {
+        "title": "Edit room",
+        "data": {
+          "room": "Room"
+        }
+      },
+      "add_room": {
+        "title": "Add room",
+        "description": "Pick a Home Assistant area or enter a name. The editor for the new room opens next.",
+        "data": {
+          "area_id": "Area",
+          "name": "Name"
+        }
+      },
+      "delete_room": {
+        "title": "Delete room",
+        "description": "The room is deleted with all its devices and activities.",
+        "data": {
+          "room": "Room"
+        }
+      },
+      "edit_room": {
+        "title": "Room \"{room}\"",
+        "description": "Devices, activities and steps as YAML. Step types: `power_on`, `power_off`, `set_source`, `set_volume`, `set_sound_mode`, `set_brightness`, `set_color_temp`, `set_position`, `set_tilt`, `call_action`, `delay`, `wait_available`. `on_start` and `on_stop` take any Home Assistant actions. For the remote control card: `icon` and `order` per activity, `remote` (button routing and extra buttons) and `commands` (own buttons as actions) – see the README. Example:\n\n```yaml\nname: Wohnzimmer\ndevices:\n  onkyo:\n    entity_id: media_player.onkyo_receiver\n    power_switch: switch.steckdose_multimedia\n    ready: {timeout: 60, reload_integration: true, on_timeout: abort}\n  beamer:\n    entity_id: media_player.epson_ehtw7400\n    power_switch: switch.steckdose_beamer\n    ready: {timeout: 60, reload_integration: true, on_timeout: continue}\n    delay_after_off: 180\nactivities:\n  tv:\n    name: TV\n    devices: [onkyo, beamer]\n    steps:\n      - {type: set_source, device: onkyo, source: SAT}\n      - {type: set_volume, device: onkyo, volume_level: 0.35}\n    on_start:\n      - action: cover.close_cover\n        target: {area_id: wohnzimmer}\n```",
+        "data": {
+          "config": "Configuration"
+        }
+      },
+      "edit_all": {
+        "title": "Whole configuration",
+        "description": "All rooms as YAML – handy for backups, copying or larger changes.",
+        "data": {
+          "config": "Configuration"
+        }
+      },
+      "confirm_missing": {
+        "title": "Unknown entities",
+        "description": "These entities do not exist in Home Assistant:\n\n{entities}\n\nA device without power is usually still known to the registry – this is most likely a typo or a renamed entity.",
+        "menu_options": {
+          "save_anyway": "Save anyway",
+          "back_to_room": "Back to the editor",
+          "back_to_all": "Back to the editor"
+        }
+      }
+    },
+    "error": {
+      "invalid_config": "Invalid configuration – {error}",
+      "name_required": "Please pick an area or enter a name",
+      "room_exists": "A room with this name already exists"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "activity": {
+        "name": "Activity",
+        "state": {
+          "idle": "Idle",
+          "starting": "Starting",
+          "active": "Active",
+          "stopping": "Stopping",
+          "error": "Error"
+        }
+      }
+    },
+    "select": {
+      "scene": {
+        "name": "Scene",
+        "state": {
+          "idle": "—",
+          "starting": "Starting …",
+          "stopping": "Stopping …",
+          "error": "Error"
+        }
+      }
+    },
+    "switch": {
+      "active": {
+        "name": "Active"
+      }
+    }
+  },
+  "services": {
+    "start_activity": {
+      "name": "Start Activity",
+      "description": "Starts an activity in a room",
+      "fields": {
+        "room": {
+          "name": "Room",
+          "description": "The room ID"
+        },
+        "activity": {
+          "name": "Activity",
+          "description": "The name of the activity to start"
+        }
+      }
+    },
+    "stop_activity": {
+      "name": "Stop Activity",
+      "description": "Stops the current activity in a room",
+      "fields": {
+        "room": {
+          "name": "Room",
+          "description": "The room ID"
+        }
+      }
+    },
+    "reload": {
+      "name": "Reload",
+      "description": "Reloads the Easy AV Control configuration"
+    },
+    "toggle_activity": {
+      "name": "Toggle activity",
+      "description": "Stops the running activity of a room, or starts one – the last used one if none is given.",
+      "fields": {
+        "room": {
+          "name": "Room",
+          "description": "The room identifier"
+        },
+        "activity": {
+          "name": "Activity",
+          "description": "Optional: activity to start when nothing runs in the room"
+        }
+      }
+    },
+    "send_command": {
+      "name": "Send command",
+      "description": "Sends a remote control command (e.g. volume_up, channel_down, ok) to the device the running activity routes it to.",
+      "fields": {
+        "room": {
+          "name": "Room",
+          "description": "The room identifier"
+        },
+        "command": {
+          "name": "Command",
+          "description": "volume_up, volume_down, mute, volume_set, channel_up, channel_down, play_pause, play, pause, stop, next, previous, up, down, left, right, ok, back, menu, home, info, guide, exit – or a name from `commands`, or the entity ID of a device setting"
+        },
+        "value": {
+          "name": "Value",
+          "description": "Value for the command, e.g. 0.4 for volume_set, the source for select_source or the sound mode for select_sound_mode"
+        },
+        "device": {
+          "name": "Device",
+          "description": "Optional: send to this device instead of the routed one; works while nothing runs"
+        }
+      }
+    }
+  },
+  "issues": {
+    "missing_entity": {
+      "title": "Easy AV Control: entity {entity_id} is missing",
+      "description": "In room **{room}**, `{path}` refers to `{entity_id}`. This entity does not exist in Home Assistant – it was probably renamed or removed. Fix the entry in the Easy AV Control configuration."
+    },
+    "activity_aborted": {
+      "title": "Easy AV Control: start of \"{activity}\" aborted",
+      "description": "In room **{room}**, the start of activity **{activity}** was aborted:\n\n`{reason}`\n\nCheck that the device has power and its integration loads, or raise `timeout` or set `on_timeout: continue`. This message disappears with the next start or stop of the room."
+    }
+  },
+  "exceptions": {
+    "unknown_room": {
+      "message": "Easy AV Control has no room \"{room}\""
+    },
+    "unknown_activity": {
+      "message": "Room \"{room}\" has no activity \"{activity}\""
+    },
+    "unknown_device": {
+      "message": "Room \"{room}\" has no device \"{device}\""
+    },
+    "no_activity": {
+      "message": "Nothing runs in room \"{room}\", so there is no device for \"{command}\""
+    },
+    "unknown_command": {
+      "message": "No device in room \"{room}\" handles the command \"{command}\""
+    },
+    "command_timeout": {
+      "message": "Command \"{command}\" did not finish in time ({target})"
+    },
+    "device_not_ready": {
+      "message": "Command \"{command}\" not sent: {reason}"
+    }
+  }
+}

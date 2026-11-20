@@ -1,0 +1,58 @@
+start_activity:
+  fields:
+    room:
+      required: true
+      example: "living_room"
+      selector:
+        text:
+    activity:
+      required: true
+      example: "TV"
+      selector:
+        text:
+
+stop_activity:
+  fields:
+    room:
+      required: true
+      example: "living_room"
+      selector:
+        text:
+
+toggle_activity:
+  fields:
+    room:
+      required: true
+      example: "living_room"
+      selector:
+        text:
+    activity:
+      required: false
+      example: "TV"
+      selector:
+        text:
+
+send_command:
+  fields:
+    room:
+      required: true
+      example: "living_room"
+      selector:
+        text:
+    command:
+      required: true
+      example: "volume_up"
+      selector:
+        text:
+    value:
+      required: false
+      example: 0.4
+      selector:
+        text:
+    device:
+      required: false
+      example: "vu"
+      selector:
+        text:
+
+reload:
