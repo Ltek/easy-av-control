@@ -1,5 +1,13 @@
 # Changelog
 
+## v2026.11.20.7
+
+**Added**
+- **Measured times:** each status wait that succeeds records how long the device took to come on or go off (the
+  last 10 per device, kept through restarts). The device page shows them, with **Use measured timeouts**
+  (half as long again as usual, and longer than the slowest seen). The flow view uses the usual time as the
+  earliest ("usually 42 s"). A start far slower than usual (more than twice, and 10 s over) is a warning.
+
 ## v2026.11.20.6
 
 **Changed**

@@ -47,6 +47,7 @@ from .const import (
 from .control import action_names
 from .coordinator import can_switch, power_service, power_switches, step_service
 from .device_state import effective_source, picture_source, wait_mode
+from .device_timings import typical_of
 from .model import CONF_DELAY_AFTER
 from .profile_library import profiles_of
 
@@ -57,12 +58,14 @@ def _status(hass: HomeAssistant, device: dict[str, Any]):
     return source, wait_mode(device, source, on=True), wait_mode(device, source, on=False)
 
 
-def _off_delay(hass: HomeAssistant, device: dict[str, Any]) -> tuple[float, float]:
-    """Before the outlet is cut: (fixed time, the longest status wait). Status: no fixed time."""
+def _off_delay(hass: HomeAssistant, device: dict[str, Any]) -> tuple[float, float, float]:
+    """Before the outlet is cut: (fixed time, the longest status wait, its measured typical time).
+    Status: no fixed time."""
     source, _, mode = _status(hass, device)
     if source is None or mode == "time":
-        return device[CONF_DELAY_AFTER_OFF], 0.0
-    return (0.0 if mode == "status" else device[CONF_DELAY_AFTER_OFF]), source.timeout_off
+        return device[CONF_DELAY_AFTER_OFF], 0.0, 0.0
+    usual = min(typical_of(hass, device[CONF_ENTITY_ID], "off") or 0.0, source.timeout_off)
+    return (0.0 if mode == "status" else device[CONF_DELAY_AFTER_OFF]), source.timeout_off, usual
 
 
 class _Clock:
@@ -181,9 +184,9 @@ def plan_start(
             )
         )
         if switch := device.get(CONF_POWER_SWITCH):
-            delay, status = _off_delay(hass, device)
-            cooldown[switch] = max(cooldown.get(switch, 0), delay)
-            status_wait[switch] = max(status_wait.get(switch, 0.0), status)
+            delay, status, usual = _off_delay(hass, device)
+            cooldown[switch] = max(cooldown.get(switch, 0), delay + usual)
+            status_wait[switch] = max(status_wait.get(switch, 0.0), status - usual)
     cuts = [(s, delay) for s, delay in cooldown.items() if s not in needed]
     for switch in cooldown:
         if switch in needed:
@@ -242,6 +245,7 @@ def plan_start(
             clock.wait_up_to(ready[CONF_TIMEOUT])
         rows.append(_switch_row(hass, "turn_on", device_id, entity_id, clock.at, condition="if_off"))
         source, mode_on, _ = _status(hass, device)
+        usual = min(typical_of(hass, entity_id, "on") or 0.0, source.timeout_on) if source else 0.0
         if source is not None and mode_on != "time":
             rows.append(
                 {
@@ -252,9 +256,12 @@ def plan_start(
                     "target": "on",
                     "timeout": source.timeout_on,
                     "debounce": source.debounce,
+                    **({"typical": usual} if usual else {}),
                 }
             )
-            clock.wait_up_to(source.timeout_on)
+            # The measured typical time counts as the earliest; the timeout as the latest
+            clock.wait(usual)
+            clock.wait_up_to(source.timeout_on - usual)
         if device[CONF_DELAY_AFTER_ON] and mode_on != "status":
             rows.append(
                 {
@@ -399,9 +406,9 @@ def plan_stop(
             )
         )
         if switch := device.get(CONF_POWER_SWITCH):
-            delay, status = _off_delay(hass, device)
-            cooldown[switch] = max(cooldown.get(switch, 0.0), delay)
-            status_wait[switch] = max(status_wait.get(switch, 0.0), status)
+            delay, status, usual = _off_delay(hass, device)
+            cooldown[switch] = max(cooldown.get(switch, 0.0), delay + usual)
+            status_wait[switch] = max(status_wait.get(switch, 0.0), status - usual)
 
     switches = list(reversed(power_switches(devices, device_ids)))
     now = [s for s in switches if cooldown.get(s, 0) <= 0 and not status_wait.get(s)]

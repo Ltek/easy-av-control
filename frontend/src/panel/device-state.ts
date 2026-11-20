@@ -38,6 +38,16 @@ export interface Detect {
   } | null;
   siblings: { integration: string; entities: string[] }[];
   roles: Record<string, string | null>;
+  /** Measured times (device_timings.py), or null before the first measured start */
+  timings?: Record<"on" | "off", Timing> | null;
+}
+
+export interface Timing {
+  samples: number;
+  typical: number | null;
+  last: number | null;
+  slowest: number | null;
+  suggested: number | null;
 }
 
 export const WAIT_MODES = ["status", "time", "both"] as const;
@@ -203,4 +213,26 @@ export function learnGroups(onSeq: string[], offSeq: string[]): Obj {
     if (!groups[group].length) delete groups[group];
   }
   return { ...out, ...groups };
+}
+
+/** "42 s" or "3:10". */
+export function seconds(value: number): string {
+  const s = Math.round(value);
+  return s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}` : `${s} s`;
+}
+
+/**
+ * The timeouts the measured times suggest, where they differ from what the device uses now; {} when there's
+ * nothing to suggest (too few starts, or already the same).
+ */
+export function suggestedTimeouts(device: Device, detect: Detect | undefined): Partial<Device> {
+  const t = detect?.timings;
+  if (!t || !detect?.state) return {};
+  const out: Partial<Device> = {};
+  const current = { on: detect.state.timeout_on, off: detect.state.timeout_off };
+  for (const dir of ["on", "off"] as const) {
+    const wanted = t[dir]?.suggested;
+    if (wanted && wanted !== current[dir]) out[dir === "on" ? "timeout_on" : "timeout_off"] = wanted;
+  }
+  return out;
 }

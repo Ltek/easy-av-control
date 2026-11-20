@@ -437,9 +437,13 @@ devices you set up already pick up their profile automatically.
 
 ## Roadmap (after this plan)
 
-- **More built-in profiles** for integrations you don't have: `denonavr`, `onkyo`, `apple_tv`, `webostv`,
-  `braviatv`, `samsungtv`, `roku`, `kodi`. Written from each integration's code (all are in the HA package the
-  tests use), labelled *From the integration's code, not tested on a device* until someone with the device
-  confirms one through Share.
-- **Shared profiles from the repo:** the Profiles tab could list `profiles/` from GitHub so a newly accepted
-  profile can be added without waiting for a build.
+Done after the plan: **measured times** (2026.11.20.7).
+
+| Priority | Feature |
+|---|---|
+| High | **Auto-off when nothing plays:** stop the activity after N minutes with nothing playing (from PiPup / ADB), with a warning on the card first ("Theater turns off in 5 min · Keep on") |
+| Medium | **Lights follow playback:** per-activity actions on play, pause and stop (dim to 0 on play, 20 % on pause, up on stop), with a short delay so skipping a chapter doesn't flash the lights |
+| Medium | **House Modes link:** stop every room when House Modes goes to Away; optionally block or ask before a start in Night mode |
+| Low | **Picture follows the content:** actions when the Lumagen's aspect ratio or dynamic range changes while an activity runs (JVC lens memory, HDR picture mode), debounced |
+| Low | **More built-in profiles** for integrations you don't have (`denonavr`, `onkyo`, `apple_tv`, `webostv`, `braviatv`, `samsungtv`, `roku`, `kodi`), from each integration's code, labelled *not tested on a device* until someone confirms one through Share |
+| Low | **Shared profiles from the repo:** list `profiles/` from GitHub in the Profiles tab, so an accepted profile can be added without a new build |

@@ -251,6 +251,9 @@ export class EasyAvControlFlow extends LitElement {
     const notes: string[] = [];
     if (typeof row.condition === "string") notes.push(this._t(`flow.if.${row.condition}`));
     if (row.kind === "ready" && row.reload) notes.push(this._t("flow.reload_if_needed"));
+    if (row.kind === "status" && Number(row.typical) > 0) {
+      notes.push(this._t("flow.typical", { seconds: this._seconds(row.typical) }));
+    }
     if (row.kind === "status" && Number(row.debounce) > 0) {
       notes.push(this._t("flow.debounce", { seconds: this._seconds(row.debounce) }));
     }

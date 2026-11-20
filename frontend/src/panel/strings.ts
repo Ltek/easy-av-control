@@ -3,6 +3,11 @@ import { localize } from "../localize";
 
 const STRINGS: Record<string, Record<string, string>> = {
   en: {
+    "timing_on": "Comes on in about {typical} ({count} measured, slowest {slowest})",
+    "timing_off": "Goes off in about {typical} ({count} measured, slowest {slowest})",
+    "timing_use": "Use measured timeouts",
+    "timing_use_hint": "Sets the status timeouts to what the measured times suggest: half as long again as usual, and longer than the slowest seen.",
+    "flow.typical": "usually {seconds}",
     "setup": "Setup",
     "flow.picture": "{step}. Wait until {entity} shows {states}, at most {timeout}",
     "field.on_failure_picture": "If there's no picture",
@@ -381,6 +386,11 @@ const STRINGS: Record<string, Record<string, string>> = {
     "flow.summary_stop_cut": "Off as soon as the devices are switched off and the actions on stop are done; the last outlet goes off after {seconds}.",
   },
   de: {
+    "timing_on": "Geht in etwa {typical} an ({count} gemessen, langsamste {slowest})",
+    "timing_off": "Geht in etwa {typical} aus ({count} gemessen, langsamste {slowest})",
+    "timing_use": "Gemessene Zeitlimits übernehmen",
+    "timing_use_hint": "Setzt die Status-Zeitlimits auf das, was die Messungen nahelegen: anderthalbmal so lang wie üblich und länger als die langsamste.",
+    "flow.typical": "meist {seconds}",
     "setup": "Einrichtung",
     "flow.picture": "{step}. Warten, bis {entity} {states} zeigt, höchstens {timeout}",
     "field.on_failure_picture": "Wenn kein Bild kommt",

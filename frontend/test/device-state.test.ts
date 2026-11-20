@@ -170,3 +170,19 @@ test("on_failure: the picture check is kept and written per check", () => {
   assert.equal(applyStateForm(device, { ...data, on_failure_picture: "warn" }, DETECT).on_failure, undefined);
   assert.equal(applyStateForm(device, { ...data, on_failure_on: "stop", on_failure_off: "stop" }, DETECT).on_failure, "stop");
 });
+
+import { seconds, suggestedTimeouts } from "../src/panel/device-state";
+
+test("measured times: suggested timeouts only where they differ", () => {
+  const timings = {
+    on: { samples: 5, typical: 42, last: 44, slowest: 51, suggested: 65 },
+    off: { samples: 2, typical: 180, last: 185, slowest: 185, suggested: null },
+  };
+  const detect = { ...DETECT, timings };
+  assert.deepEqual(suggestedTimeouts({ entity_id: "remote.jvc" }, detect), { timeout_on: 65 });
+  const already = { ...detect, state: { ...DETECT.state!, timeout_on: 65 } };
+  assert.deepEqual(suggestedTimeouts({ entity_id: "remote.jvc" }, already), {});
+  assert.deepEqual(suggestedTimeouts({ entity_id: "remote.jvc" }, DETECT), {});
+  assert.equal(seconds(42.4), "42 s");
+  assert.equal(seconds(190), "3:10");
+});

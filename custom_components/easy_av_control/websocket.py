@@ -41,6 +41,7 @@ from .coordinator import EasyAVControlCoordinator, related_setting_entities
 from .detect import apply_detect, async_get_seen, detect_all, draft_profile
 from .device_profiles import ROLES, best_for_role, physical_devices, resolve
 from .device_state import effective_source, wait_mode
+from .device_timings import timings_of, view as timing_view
 from .flow import plan_start, plan_stop
 from .model import async_validate_config, find_missing_entities
 from .profile_library import async_get_library, profile_for_device
@@ -484,7 +485,14 @@ async def ws_config_detect(
     entity_id: str = msg["entity_id"]
     device = {**msg["device"], "entity_id": entity_id}
     profile = profile_for_device(hass, library.profiles, device)
-    result: dict[str, Any] = {"profile": None, "found": None, "state": None, "siblings": [], "roles": {}}
+    result: dict[str, Any] = {
+        "profile": None,
+        "found": None,
+        "state": None,
+        "siblings": [],
+        "roles": {},
+        "timings": timing_view(timings_of(hass, entity_id)),
+    }
     if profile is not None:
         found = resolve(hass, profile, entity_id)
         result["profile"] = library.view(profile)

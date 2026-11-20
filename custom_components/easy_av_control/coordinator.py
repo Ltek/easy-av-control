@@ -187,6 +187,7 @@ from .device_state import (
     picture_source,
     wait_mode,
 )
+from .device_timings import MAX_SAMPLES, add_sample, is_slow, typical
 from .model import CONF_DELAY_AFTER, async_validate_config, find_missing_entities
 
 _LOGGER = logging.getLogger(__name__)
@@ -386,6 +387,10 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._unsub_sources: CALLBACK_TYPE | None = None
         # Integration profiles (device_profiles.py), loaded at setup
         self.profiles: dict[str, Profile] = {}
+        # Measured times (device_timings.py): device entity -> {"on": [s, ...], "off": [s, ...]}
+        self.timings: dict[str, dict[str, list[float]]] = {}
+        # When each device was last switched off, for its "off" time
+        self._off_started: dict[str, float] = {}
 
     # ------------------------------------------------------------------
     # Views used by the entity platforms
@@ -586,6 +591,11 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             }
             for attribute, key in _REMEMBERED_LISTS.items()
         }
+        self.timings = {
+            entity_id: {d: [float(x) for x in (t.get(d) or [])][-MAX_SAMPLES:] for d in ("on", "off")}
+            for entity_id, t in (stored.get("timings") or {}).items()
+            if isinstance(t, dict)
+        }
         for room_id, data in stored.get(CONF_ROOMS, {}).items():
             if room_id not in self.rooms:
                 continue
@@ -618,6 +628,7 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 for room_id, rt in self._runtime.items()
             },
             **{key: self._lists[attribute] for attribute, key in _REMEMBERED_LISTS.items()},
+            "timings": self.timings,
         }
 
     @callback
@@ -1318,11 +1329,14 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         retried = False
         while True:
+            started = self.hass.loop.time()
             if turn_on:
                 self._doing(rt, "turn_on", name=name)
                 await self._async_power_on(entity_id, context)
             if source is not None and mode != WAIT_TIME:
                 result, value = await self._async_wait_state(rt, device, source, GROUP_ON, source.timeout_on)
+                if result == RESULT_OK and turn_on and not retried:
+                    self._record_time(device, "on", self.hass.loop.time() - started)
                 if result != RESULT_OK:
                     action = failure_action(device, CHECK_TURN_ON)
                     message = describe_failure(name, result, value, "on", source.timeout_on)
@@ -1374,6 +1388,24 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         wait = None if source.current(self.hass)[0] == GROUP_OFF and was_off else source
         return (0.0 if mode == WAIT_STATUS else delay), wait
 
+    @callback
+    def _record_time(self, device: dict[str, Any], direction: str, seconds: float) -> None:
+        """Keep how long a device took to come on or go off; a time far over the usual one is reported."""
+        entity_id = device[CONF_ENTITY_ID]
+        timings = self.timings.setdefault(entity_id, {"on": [], "off": []})
+        samples = timings.get(direction) or []
+        if is_slow(samples, seconds):
+            message = (
+                f"{self._device_name(device)} took {seconds:.0f} s to {'come on' if direction == 'on' else 'go off'}"
+                f" (usually {typical(samples):.0f} s)"
+            )
+            if direction == "on":
+                self._warn(message)
+            else:
+                _LOGGER.warning(message)
+        timings[direction] = add_sample(samples, seconds)
+        self._schedule_save()
+
     async def _async_wait_off(self, device: dict[str, Any], source: StateSource) -> bool:
         """Wait until a device says it is off, before its outlet is cut. False: leave the outlet on."""
         name = self._device_name(device)
@@ -1381,6 +1413,9 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         while True:
             result, value = await async_wait_for(self.hass, source, GROUP_OFF, source.timeout_off)
             if result == RESULT_OK:
+                started = self._off_started.pop(device[CONF_ENTITY_ID], None)
+                if started is not None and not retried:
+                    self._record_time(device, "off", self.hass.loop.time() - started)
                 return True
             action = failure_action(device, CHECK_TURN_OFF)
             message = describe_failure(name, result, value, "off", source.timeout_off)
@@ -1729,6 +1764,7 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         await self._async_call(domain, service, {ATTR_ENTITY_ID: entity_id}, context, "turn on")
 
     async def _async_power_off(self, entity_id: str, context: Context) -> None:
+        self._off_started[entity_id] = self.hass.loop.time()
         if not can_switch(self.hass, entity_id, on=False):
             _LOGGER.debug("%s cannot be switched off, skipping", entity_id)
             return

@@ -332,6 +332,12 @@ A device that already says it's on (or is warming up) isn't switched on again; o
 switched on once it's off. Each state is **debounced**: it must hold for `debounce` seconds, so a flicker
 doesn't count. While waiting, the card shows the device's own word for its state ("JVC Projector: warming").
 
+**Measured times:** every start and stop that waits for a device's state records how long it took. The
+device page shows them ("Comes on in about 42 s (8 measured, slowest 51 s)") with **Use measured timeouts**, which
+sets the timeouts to half as long again as usual and longer than the slowest seen. The flow view counts the usual
+time as the earliest a start can be done. A start far slower than usual (more than twice, and 10 s over) is
+reported as a warning.
+
 **By hand:** `state_source` names another entity, an attribute, and which values mean what. `state_source: none`
 turns it off.
 

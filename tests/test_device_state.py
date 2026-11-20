@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -399,3 +400,86 @@ def test_unquoted_on_off_in_a_state_source():
 
     device = DEVICE_SCHEMA({"entity_id": ISP, "state_source": {True: [True], False: [False], "starting": "boot"}})
     assert device["state_source"] == {"on": ["on"], "off": ["off"], "starting": ["boot"]}
+
+
+# ------------------------------------------------------------------------------------------- measured times
+
+
+def test_timing_helpers():
+    from custom_components.easy_av_control import device_timings as dt
+
+    assert dt.suggested_timeout([40, 42]) is None                  # not enough yet
+    assert dt.suggested_timeout([40, 42, 44]) == 65                 # 42 * 1.5 = 63 -> 65
+    assert dt.suggested_timeout([40, 42, 90]) == 100                # the slowest + 10 % wins
+    assert dt.suggested_timeout([1, 1, 1]) == 10                    # never below 10 s
+    assert dt.is_slow([40, 42, 44], 95) and not dt.is_slow([40, 42, 44], 60)
+    assert not dt.is_slow([2, 2, 2], 9)                             # twice as long but under 10 s more
+    assert not dt.is_slow([40, 42], 200)                            # not enough to tell
+    assert dt.add_sample(list(range(10)), 99) == [*range(1, 10), 99]
+    assert dt.view(None) is None
+    assert dt.view({"on": [40, 42, 44], "off": []})["on"] == {
+        "samples": 3, "typical": 42, "last": 44, "slowest": 44, "suggested": 65}
+
+
+async def test_start_and_stop_record_how_long_the_projector_took(hass: HomeAssistant, theater):
+    coordinator = await setup(hass, theater, _room({"debounce": 0}))
+    theater.on("turn_on", JVC, (0.05, JVC_POWER, "warming"), (0.25, JVC_POWER, "on"))
+    await coordinator.async_start_activity("kino", "movie")
+    on = coordinator.timings[JVC]["on"]
+    assert len(on) == 1 and 0.2 <= on[0] <= 1.0
+
+    theater.on("turn_off", JVC, (0.05, JVC_POWER, "cooling"), (0.3, JVC_POWER, "standby"))
+    await coordinator.async_stop_activity("kino")
+    await _until(lambda: hass.states.get(PLUG).state == "off")
+    off = coordinator.timings[JVC]["off"]
+    assert len(off) == 1 and 0.25 <= off[0] <= 1.0
+    assert coordinator._data_to_store()["timings"][JVC] == {"on": on, "off": off}
+
+
+async def test_a_device_that_was_already_on_records_nothing(hass: HomeAssistant, theater):
+    hass.states.async_set(JVC_POWER, "on")
+    coordinator = await setup(hass, theater, _room({"debounce": 0}))
+    await coordinator.async_start_activity("kino", "movie")
+    assert JVC not in coordinator.timings
+
+
+async def test_a_slow_start_is_reported(hass: HomeAssistant, theater):
+    coordinator = await setup(hass, theater, _room({"debounce": 0}))
+    coordinator.timings[JVC] = {"on": [0.01, 0.01, 0.01], "off": []}
+    from custom_components.easy_av_control import coordinator as coordinator_module
+
+    with patch.object(coordinator_module, "is_slow", lambda samples, seconds: True):
+        theater.on("turn_on", JVC, (0.05, JVC_POWER, "on"))
+        await coordinator.async_start_activity("kino", "movie")
+    assert coordinator.runtime("kino").warnings == ["JVC took 0 s to come on (usually 0 s)"]
+
+
+async def test_measured_times_come_back_after_a_restart(hass: HomeAssistant, theater, hass_storage):
+    coordinator = await setup(hass, theater, _room({"debounce": 0}))
+    coordinator.timings[JVC] = {"on": [41.0, 43.0, 42.0], "off": [180.0]}
+    stored = coordinator._data_to_store()
+    from custom_components.easy_av_control.coordinator import EasyAVControlCoordinator
+
+    again = EasyAVControlCoordinator(hass, coordinator.entry)
+    again.rooms = coordinator.rooms
+    with patch.object(again._store, "async_load", return_value=stored):
+        await again._async_restore()
+    assert again.timings[JVC] == {"on": [41.0, 43.0, 42.0], "off": [180.0]}
+
+
+async def test_the_flow_uses_the_typical_time_as_the_earliest(hass: HomeAssistant, theater):
+    from custom_components.easy_av_control.flow import plan_start, plan_stop
+
+    jvc = {"debounce": 0, "delay_after_on": 0, "timeout_on": 120, "timeout_off": 300}
+    coordinator = await setup(hass, theater, _room(jvc))
+    coordinator.timings[JVC] = {"on": [40.0, 42.0, 44.0], "off": [170.0, 180.0, 190.0]}
+    room = coordinator.rooms["kino"]
+    start = plan_start(hass, "kino", room, "movie")
+    status = next(r for r in start["rows"] if r["kind"] == "status")
+    assert status["typical"] == 42 and start["done"] == [42, 120]
+    stop = plan_stop(hass, "kino", room, "movie")
+    cut = next(r for r in stop["rows"] if r["kind"] == "outlets_off")
+    assert cut["at"] == [180, 300] and cut["after_status"] is True
+    # A typical time longer than the timeout counts as the timeout
+    coordinator.timings[JVC]["on"] = [500.0, 500.0, 500.0]
+    assert plan_start(hass, "kino", room, "movie")["done"] == [120, 120]

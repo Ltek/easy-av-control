@@ -40,6 +40,8 @@ import {
   WAIT_MODES,
   applyStateForm,
   detectedChanges,
+  seconds as asSeconds,
+  suggestedTimeouts,
   stateFormData,
   type Detect,
   type ProfileView,
@@ -612,6 +614,7 @@ export class EasyAvControlRoomEditor extends LitElement {
         <span class="ltek-name">${this._t("detected", { name: profile.name })}</span>
         ${lines.map((l) => html`<span class="ltek-subline">${l}</span>`)}
         ${state ? html`<span class="ltek-subline">${this._t("detected_now", { value: state.value ?? state.group })}</span>` : nothing}
+        ${this._timingLines(detect).map((l) => html`<span class="ltek-subline">${l}</span>`)}
       </span>
       <span class="ltek-badge ${profile.source === "user" ? "lib" : "accent"}">
         ${this._t(profile.source === "user" ? "profiles_yours" : "profiles_builtin")}
@@ -625,7 +628,39 @@ export class EasyAvControlRoomEditor extends LitElement {
             ${this._t("detected_use")}
           </button>`
         : html`<span class="ltek-badge ok">${this._t("detected_applied")}</span>`}
+      ${Object.keys(suggestedTimeouts(device, detect)).length
+        ? html`<button
+            class="ltek-btn"
+            title=${this._t("timing_use_hint")}
+            @click=${() =>
+              this._emit({
+                ...this.room,
+                devices: { ...this.room.devices, [id]: { ...device, ...suggestedTimeouts(device, detect) } },
+              })}
+          >
+            ${this._t("timing_use")}
+          </button>`
+        : nothing}
     </div>`;
+  }
+
+  /** "Comes on in about 42 s (8 starts, slowest 51 s)" and the same for going off. */
+  private _timingLines(detect: Detect): string[] {
+    const t = detect.timings;
+    if (!t) return [];
+    const lines: string[] = [];
+    for (const dir of ["on", "off"] as const) {
+      const m = t[dir];
+      if (!m?.samples || m.typical === null) continue;
+      lines.push(
+        this._t(`timing_${dir}`, {
+          typical: asSeconds(m.typical),
+          count: String(m.samples),
+          slowest: asSeconds(m.slowest ?? m.typical),
+        }),
+      );
+    }
+    return lines;
   }
 
   private _entityName(entityId: string): string {
