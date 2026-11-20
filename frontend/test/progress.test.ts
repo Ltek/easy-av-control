@@ -65,3 +65,23 @@ test("cool-down: who cools down and when the power goes off", () => {
   // Without a device name the outlet stands in
   assert.equal(coolingText({ ...cooling, names: [] }, NOW, en).text, "Cooling down: Steckdose Beamer");
 });
+
+test("waiting for a device's own state: its word for it, at most the timeout", () => {
+  assert.deepEqual(
+    progressText({ kind: "status", name: "JVC Projector", value: "warming", target: "on", until: inSeconds(61) }, NOW, en),
+    { text: "JVC Projector: warming", time: "at most 1:01" },
+  );
+  assert.deepEqual(progressText({ kind: "status", name: "Lumagen", value: null, target: "on" }, NOW, en), {
+    text: "Waiting for Lumagen to be on",
+  });
+  assert.deepEqual(progressText({ kind: "status", name: "JVC", value: null, target: "off" }, NOW, de), {
+    text: "Warte, bis JVC aus ist",
+  });
+});
+
+test("an outlet that goes off once its devices say so", () => {
+  assert.deepEqual(
+    coolingText({ outlet: "Outlet", names: ["JVC Projector"], until: inSeconds(300), status: true }, NOW, en),
+    { text: "Cooling down: JVC Projector", time: "power off once they are off, at most 5:00" },
+  );
+});

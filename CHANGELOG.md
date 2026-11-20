@@ -1,5 +1,31 @@
 # Changelog
 
+## v2026.11.20.3
+
+**Added: waiting for the devices' own states**
+- **Turning on waits until the device says it's on**, instead of a fixed time: the JVC projector's *warming* →
+  *on*, StormAudio's *initializing* → *on*, the Lumagen's sensors coming up, PiPup's screen. Found automatically
+  from the integration's profile. The card shows the device's own word while it waits ("JVC Projector:
+  warming").
+- **The outlet is cut once the device says it's off** (JVC *cooling* → *standby*) instead of after a fixed
+  cool-down.
+- **Wait modes** per device, for turning on and off separately (`wait_on`, `wait_off`): `status`, `time` (the
+  fixed delays, as before) or `both` (the state, then the fixed time on top).
+- **Debounce**: a state must hold (2 s by default) before it counts, so a flicker doesn't end a wait.
+- **When a check fails** (no state in time, or the device reports an error), per device (`on_failure`): `warn`
+  and go on (default), `stop` the activity (when turning off: leave the outlet on), or `retry` once.
+- A device that already says it's on, or is still warming up, isn't switched on again; one still cooling down
+  is switched on once it's off. A remote button for a device that's warming up waits until it's on.
+- `state_source` sets the watched entity, attribute and values by hand; `state_source: none` keeps fixed times.
+- The readiness check (`ready`) can compare an **attribute** (`attribute: detailed_state`).
+
+**Changed**
+- **The room's select starts and stops in the background**, so whoever sets it (an automation, Plex Center's
+  room hook) follows the room's sensor instead of waiting for the whole start. The `start_activity` and
+  `stop_activity` actions still wait.
+
+A device without a profile (or with `state_source: none`) works exactly as before.
+
 ## v2026.11.20.2
 
 **Added** (groundwork, nothing changes in how activities run yet)

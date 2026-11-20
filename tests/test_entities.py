@@ -62,6 +62,7 @@ async def test_select_starts_by_display_name(hass: HomeAssistant) -> None:
     await hass.services.async_call(
         "select", "select_option", {"entity_id": select_id, "option": "Musik"}, blocking=True
     )
+    await hass.async_block_till_done()  # the select starts in the background
 
     assert hass.states.get(select_id).state == "Musik"
     coordinator = hass.data[DOMAIN][entry.entry_id]
@@ -95,6 +96,7 @@ async def test_select_options_are_unique(hass: HomeAssistant) -> None:
         await hass.services.async_call(
             "select", "select_option", {"entity_id": select_id, "option": option}, blocking=True
         )
+        await hass.async_block_till_done()
         assert coordinator.active_activities["wz"] == activity_id
         assert hass.states.get(select_id).state == option
 

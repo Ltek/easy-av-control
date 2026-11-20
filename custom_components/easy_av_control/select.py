@@ -142,10 +142,18 @@ class RoomActivitySelect(CoordinatorEntity, SelectEntity):
             _LOGGER.debug("Ignoring selection of read-only option '%s'", option)
             return
 
+        # In the background: a start can take minutes (a projector warming up), and whoever set the select
+        # (Plex Center's room hook, an automation) follows the room's sensor instead of waiting here.
+        # The start_activity / stop_activity actions still wait until the room is done.
         if option == _OPT_IDLE:
-            await self.coordinator.async_stop_activity(self.room_id)
+            self.hass.async_create_task(
+                self.coordinator.async_stop_activity(self.room_id), f"{self.entity_id} stop"
+            )
         elif (activity_id := self._activity_options().get(option)) is not None:
-            await self.coordinator.async_start_activity(self.room_id, activity_id)
+            self.hass.async_create_task(
+                self.coordinator.async_start_activity(self.room_id, activity_id),
+                f"{self.entity_id} start",
+            )
 
     # ------------------------------------------------------------------
     # Device

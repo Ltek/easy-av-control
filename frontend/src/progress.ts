@@ -12,6 +12,9 @@ export interface Current {
   steps?: number;
   step_type?: string;
   hook?: string;
+  /** "status": the device's own word for its state ("warming") and the state waited for (on / off) */
+  value?: string | null;
+  target?: string;
 }
 
 /** easy_av_control/control/subscribe: a power switch cut after its devices cooled down. */
@@ -19,8 +22,10 @@ export interface Cooling {
   outlet: string;
   /** The devices that cool down */
   names: string[];
-  /** When the power goes off (ISO time) */
+  /** When the power goes off (ISO time); with "status" the latest it goes off */
   until: string;
+  /** The outlet goes off once the devices say they are off, not after a fixed time */
+  status?: boolean;
 }
 
 type Translate = (key: string, params?: Record<string, string>) => string;
@@ -35,7 +40,7 @@ export function coolingText(cooling: Cooling, now: number, t: Translate): { text
   const names = cooling.names.length ? cooling.names.join(", ") : cooling.outlet;
   return {
     text: t("cooling.text", { names }),
-    time: t("cooling.time", { time: timeLeft(cooling.until, now) }),
+    time: t(cooling.status ? "cooling.time_status" : "cooling.time", { time: timeLeft(cooling.until, now) }),
   };
 }
 
@@ -63,6 +68,11 @@ export function progressText(
     case "hooks":
       text = t(`doing.hooks_${current.hook}`);
       break;
+    case "status":
+      text = current.value
+        ? t(`doing.status_${current.target === "off" ? "off" : "on"}_value`, { name, value: current.value })
+        : t(`doing.status_${current.target === "off" ? "off" : "on"}`, { name });
+      break;
     default:
       text = t(`doing.${current.kind}`, { name });
   }
@@ -70,5 +80,6 @@ export function progressText(
     return { text };
   }
   const time = timeLeft(current.until, now);
-  return { text, time: t(current.kind === "ready" ? "doing.at_most" : "doing.left", { time }) };
+  const atMost = current.kind === "ready" || current.kind === "status";
+  return { text, time: t(atMost ? "doing.at_most" : "doing.left", { time }) };
 }

@@ -66,6 +66,29 @@ CONF_COLOR_TEMP_KELVIN: Final = "color_temp_kelvin"
 CONF_DATA: Final = "data"
 CONF_TARGET: Final = "target"
 
+# Device states (PLAN.md phase 2): what says a device is on, how to wait, what to do when a check fails
+CONF_STATE_SOURCE: Final = "state_source"
+CONF_ATTRIBUTE: Final = "attribute"
+CONF_AVAILABLE_IS_ON: Final = "available_is_on"
+CONF_WAIT_ON: Final = "wait_on"
+CONF_WAIT_OFF: Final = "wait_off"
+CONF_TIMEOUT_ON: Final = "timeout_on"
+CONF_TIMEOUT_OFF: Final = "timeout_off"
+CONF_DEBOUNCE: Final = "debounce"
+CONF_ON_FAILURE: Final = "on_failure"
+STATE_SOURCE_NONE: Final = "none"
+WAIT_STATUS: Final = "status"
+WAIT_TIME: Final = "time"
+WAIT_BOTH: Final = "both"
+WAIT_MODES: Final = [WAIT_STATUS, WAIT_TIME, WAIT_BOTH]
+FAILURE_WARN: Final = "warn"
+FAILURE_STOP: Final = "stop"
+FAILURE_RETRY: Final = "retry"
+FAILURE_ACTIONS: Final = [FAILURE_WARN, FAILURE_STOP, FAILURE_RETRY]
+CHECK_TURN_ON: Final = "turn_on"
+CHECK_TURN_OFF: Final = "turn_off"
+CHECKS: Final = [CHECK_TURN_ON, CHECK_TURN_OFF]
+
 ON_TIMEOUT_CONTINUE: Final = "continue"
 ON_TIMEOUT_ABORT: Final = "abort"
 ON_TIMEOUT_OPTIONS: Final = [ON_TIMEOUT_CONTINUE, ON_TIMEOUT_ABORT]

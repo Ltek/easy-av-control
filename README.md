@@ -242,8 +242,13 @@ activities:
 | `remote_entity` | — | A `remote` entity for the navigation keys of the card (arrows, OK, back, home, menu), e.g. `remote.apple_tv`, see [Own commands and buttons](#own-commands-and-buttons) |
 | `ready` | — | Readiness check before the device is switched on (see below) |
 | `delay_after_power` | `0` | Boot time: seconds the device needs after its `power_switch` came on before it accepts commands. Counted from switching the outlet on, so devices on the same outlet boot in parallel. Skipped when the outlet was already on. Use it for devices that report `off` instead of `unavailable` while they have no power — the readiness check cannot tell those states apart |
-| `delay_after_on` | `0` | Seconds to wait after switching the device on. Skipped when the device was already on |
-| `delay_after_off` | `0` | Seconds the device needs after switching off before its power is cut (cool-down); the room does not wait for it |
+| `delay_after_on` | `0` | Seconds to wait after switching the device on (wait mode *time* or *both*). Skipped when the device was already on |
+| `delay_after_off` | `0` | Seconds the device needs after switching off before its power is cut (cool-down, wait mode *time* or *both*); the room does not wait for it |
+| `state_source` | automatic | What says the device is on, see [Device states](#device-states) |
+| `wait_on` / `wait_off` | `status` with a state source, else `time` | How to wait after turning on, and before cutting the outlet after turning off: `status`, `time` or `both` |
+| `timeout_on` / `timeout_off` | from the profile (120 / 300 s) | How long to wait for the state |
+| `debounce` | from the profile (2 s) | Seconds a state must hold before it counts |
+| `on_failure` | `warn` | When the state doesn't come in time, or the device reports an error: `warn` (go on), `stop` (stop the activity; when turning off: leave the outlet on) or `retry` (switch it once more, then warn). One value, or `{turn_on: …, turn_off: …}` |
 | `commands` | — | Remote buttons as Home Assistant actions, see [Remote control](#remote-control) |
 
 `ready` takes:
@@ -252,6 +257,7 @@ activities:
 |-----|---------|-------------|
 | `entity_id` | the device | Check another entity, e.g. `remote.apple_tv`: the Apple TV integration reports its media player as `off` while it is not connected, while its remote is `on` only when connected |
 | `state` | — | Wait for this state (or a list of states) instead of "not `unavailable`" |
+| `attribute` | — | Compare this attribute with `state` instead of the state itself |
 | `timeout` | `60` | Seconds to wait for the entity |
 | `reload_integration` | `false` | Reload the integration that provides the entity before waiting, and again every 5 s while it stays in `setup_retry` because the device does not answer yet. This skips the back-off of an integration in `setup_retry`, whose growing pauses (5, 10, 20, 40 s …) can otherwise take more than a minute after the device got power. When the device's `power_switch` was just switched on, the integration is reloaded after the boot time even if the device looks ready: some integrations keep reporting the last state (e.g. `off`) while the device has no power. A reload that does not finish within `timeout` does not hold up the start; it goes on with a warning |
 | `on_timeout` | `abort` | `abort` stops the start and puts the room into `error`; `continue` logs a warning and goes on |
@@ -263,6 +269,59 @@ aptv:
   entity_id: media_player.apple_tv
   ready: {entity_id: remote.apple_tv, state: "on", timeout: 30, reload_integration: true, on_timeout: continue}
 ```
+
+### Device states
+
+Many integrations say more than "on" or "off": a JVC projector is *warming* before it's *on* and *cooling* before
+it's in *standby*; a StormAudio processor is *initializing*. Easy AV Control waits for those states instead of
+fixed times.
+
+**Automatic:** the integration's **profile** says which entity to watch and what its states mean. Built in:
+
+| Profile | Watches |
+|---|---|
+| JVC projector (`jvc_projector_ha`) | its Power State sensor: `standby`, `warming`, `on`, `cooling`, `error` |
+| StormAudio | the media player's `detailed_state`: `initializing`, `on`, `shutting down`, `off` |
+| Lumagen | its sensors: they're unavailable until the unit has booted |
+| PiPup | the screen sensor |
+| Android TV (ADB), Android TV Remote | the media player |
+| Yamaha MusicCast | the zone's media player |
+
+Google Cast has a profile too, but only for what's playing: its state doesn't say whether the TV is on. A device
+without a profile keeps fixed times (`delay_after_on`, `delay_after_off`), exactly as before.
+
+**Wait modes** (`wait_on`, `wait_off`):
+
+| Mode | Turning on | Before the outlet is cut |
+|---|---|---|
+| `status` | until the state says on | until the state says off |
+| `time` | `delay_after_on` | `delay_after_off` |
+| `both` | the state, then `delay_after_on` | the state, then `delay_after_off` |
+
+A device that already says it's on (or is warming up) isn't switched on again; one that's still cooling down is
+switched on once it's off. Each state is **debounced**: it must hold for `debounce` seconds, so a flicker
+doesn't count. While waiting, the card shows the device's own word for its state ("JVC Projector: warming").
+
+**By hand:** `state_source` names another entity, an attribute, and which values mean what. `state_source: none`
+turns it off.
+
+```yaml
+isp:
+  entity_id: media_player.isp
+  state_source:
+    attribute: detailed_state
+    "on": ["on"]
+    starting: [initializing]
+    stopping: [shutting down]
+    "off": ["off"]
+  on_failure: {turn_on: retry, turn_off: warn}
+```
+
+Unquoted `on` / `off` work too (YAML reads them as true / false; Easy AV Control takes them back).
+
+**The room's select** starts and stops in the background, so whoever sets it (an automation, Plex Center's room
+hook) follows the room's sensor instead of waiting minutes for the select. The `start_activity` and
+`stop_activity` actions still wait until the room is done.
 
 ### Activities
 

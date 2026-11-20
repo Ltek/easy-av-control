@@ -54,16 +54,20 @@ from homeassistant.helpers import config_validation as cv, entity_registry as er
 from homeassistant.helpers.script import async_validate_actions_config
 
 from .const import (
+    CHECKS,
     COMMAND_GROUPS,
     CONF_ACTION,
     CONF_ACTIVITIES,
     CONF_AREA_ID,
+    CONF_ATTRIBUTE,
+    CONF_AVAILABLE_IS_ON,
     CONF_BRIGHTNESS_PCT,
     CONF_BUTTONS,
     CONF_COLOR_TEMP_KELVIN,
     CONF_COMMAND,
     CONF_COMMANDS,
     CONF_DATA,
+    CONF_DEBOUNCE,
     CONF_DEFAULT_ACTIVITY,
     CONF_DELAY_AFTER_OFF,
     CONF_DELAY_AFTER_ON,
@@ -75,6 +79,7 @@ from .const import (
     CONF_ICON,
     CONF_ID,
     CONF_NAME,
+    CONF_ON_FAILURE,
     CONF_ON_START,
     CONF_ON_STOP,
     CONF_ON_TIMEOUT,
@@ -92,21 +97,28 @@ from .const import (
     CONF_SOUND_MODE,
     CONF_SOURCE,
     CONF_STATE,
+    CONF_STATE_SOURCE,
     CONF_STEPS,
     CONF_TARGET,
     CONF_TILT_POSITION,
     CONF_TIMEOUT,
+    CONF_TIMEOUT_OFF,
+    CONF_TIMEOUT_ON,
     CONF_TOUCHPAD,
     CONF_TRANSITION,
     CONF_TYPE,
     CONF_VOLUME_LEVEL,
+    CONF_WAIT_OFF,
+    CONF_WAIT_ON,
     DEFAULT_READY_TIMEOUT,
     DOMAIN,
+    FAILURE_ACTIONS,
     ON_TIMEOUT_ABORT,
     ON_TIMEOUT_OPTIONS,
     SETTING_ENTITY_DOMAINS,
     SETTING_SOUND_MODE,
     SETTING_SOURCE,
+    STATE_SOURCE_NONE,
     STEP_TYPE_CALL_ACTION,
     STEP_TYPE_DELAY,
     STEP_TYPE_POWER_OFF,
@@ -119,6 +131,7 @@ from .const import (
     STEP_TYPE_SET_TILT,
     STEP_TYPE_SET_VOLUME,
     STEP_TYPE_WAIT_AVAILABLE,
+    WAIT_MODES,
 )
 
 CONF_DELAY_AFTER = "delay_after"
@@ -138,6 +151,8 @@ READY_SCHEMA = vol.Schema(
         # Apple TV, which is "on" only while the integration is connected
         vol.Optional(CONF_ENTITY_ID): cv.entity_id,
         vol.Optional(CONF_STATE): _STATES,
+        # Compare an attribute instead of the state (e.g. StormAudio detailed_state)
+        vol.Optional(CONF_ATTRIBUTE): str,
         vol.Optional(CONF_TIMEOUT, default=DEFAULT_READY_TIMEOUT): vol.All(
             vol.Coerce(float), vol.Range(min=1, max=3600)
         ),
@@ -147,6 +162,38 @@ READY_SCHEMA = vol.Schema(
         ),
     }
 )
+
+def _state_value(value: Any) -> str:
+    """A state value; YAML reads a bare on / off as a boolean, which would never match a state."""
+    if isinstance(value, bool):
+        return "on" if value else "off"
+    return str(value)
+
+
+# What says a device is on: an entity (default: the device's own) and what its values mean.
+# Absent = automatic, from the integration's profile; "none" = no indicator (fixed times only).
+def _bool_keys(value: Any) -> Any:
+    """YAML reads unquoted on: / off: keys as true / false: take them as "on" / "off"."""
+    if isinstance(value, dict):
+        return {("on" if k else "off") if isinstance(k, bool) else k: v for k, v in value.items()}
+    return value
+
+
+_STATE_SOURCE_FIELDS = vol.Schema(
+    {
+        vol.Optional(CONF_ENTITY_ID): cv.entity_id,
+        vol.Optional(CONF_ATTRIBUTE): str,
+        vol.Optional(CONF_AVAILABLE_IS_ON): cv.boolean,
+        **{
+            vol.Optional(group): vol.All(cv.ensure_list, [_state_value])
+            for group in ("on", "starting", "stopping", "off", "error")
+        },
+    }
+)
+STATE_SOURCE_SCHEMA = vol.All(_bool_keys, _STATE_SOURCE_FIELDS)
+
+_FAILURE = vol.In(FAILURE_ACTIONS)
+ON_FAILURE_SCHEMA = vol.Any(_FAILURE, vol.Schema({vol.Optional(check): _FAILURE for check in CHECKS}))
 
 # A setting the card offers: the source or sound mode of a media player, or
 # an entity of the device (a number, select or switch), with optional
@@ -187,6 +234,14 @@ DEVICE_SCHEMA = vol.Schema(
         vol.Optional(CONF_DELAY_AFTER_POWER, default=0): _SECONDS,
         vol.Optional(CONF_DELAY_AFTER_ON, default=0): _SECONDS,
         vol.Optional(CONF_DELAY_AFTER_OFF, default=0): _SECONDS,
+        # Device states (no defaults: nothing is written while the automatic choice is kept)
+        vol.Optional(CONF_STATE_SOURCE): vol.Any(vol.All(str, vol.In([STATE_SOURCE_NONE])), STATE_SOURCE_SCHEMA),
+        vol.Optional(CONF_WAIT_ON): vol.In(WAIT_MODES),
+        vol.Optional(CONF_WAIT_OFF): vol.In(WAIT_MODES),
+        vol.Optional(CONF_TIMEOUT_ON): vol.All(vol.Coerce(float), vol.Range(min=0.1, max=3600)),
+        vol.Optional(CONF_TIMEOUT_OFF): vol.All(vol.Coerce(float), vol.Range(min=0.1, max=3600)),
+        vol.Optional(CONF_DEBOUNCE): vol.All(vol.Coerce(float), vol.Range(min=0, max=60)),
+        vol.Optional(CONF_ON_FAILURE): ON_FAILURE_SCHEMA,
         vol.Optional(CONF_COMMANDS, default=dict): _COMMANDS,
         # Settings in the card; without them automatic, see control.device_settings
         vol.Optional(CONF_SETTINGS): vol.Any(None, [_device_setting]),
