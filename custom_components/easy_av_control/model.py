@@ -87,6 +87,7 @@ from .const import (
     CONF_ORDER,
     CONF_POSITION,
     CONF_POWER_SWITCH,
+    CONF_PROFILE,
     CONF_READY,
     CONF_RELOAD_INTEGRATION,
     CONF_REMOTE,
@@ -235,6 +236,7 @@ DEVICE_SCHEMA = vol.Schema(
         vol.Optional(CONF_DELAY_AFTER_ON, default=0): _SECONDS,
         vol.Optional(CONF_DELAY_AFTER_OFF, default=0): _SECONDS,
         # Device states (no defaults: nothing is written while the automatic choice is kept)
+        vol.Optional(CONF_PROFILE): vol.Match(r"^[a-z0-9_]+$"),
         vol.Optional(CONF_STATE_SOURCE): vol.Any(vol.All(str, vol.In([STATE_SOURCE_NONE])), STATE_SOURCE_SCHEMA),
         vol.Optional(CONF_WAIT_ON): vol.In(WAIT_MODES),
         vol.Optional(CONF_WAIT_OFF): vol.In(WAIT_MODES),

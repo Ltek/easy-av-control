@@ -4,6 +4,7 @@
  * whether it was open.
  */
 import { LitElement, css, html, type TemplateResult } from "lit";
+import { ltekChrome, ltekTokens } from "./ltek-styles";
 
 const DOCS = "https://github.com/Ltek/easy-av-control#readme";
 const STORAGE_KEY = "easy-av-control-guide-open";
@@ -139,7 +140,10 @@ export class EasyAvControlGuide extends LitElement {
     </details>`;
   }
 
-  static styles = css`
+  static styles = [
+    ltekTokens,
+    ltekChrome,
+    css`
     :host {
       display: block;
       margin-bottom: 16px;
@@ -202,7 +206,8 @@ export class EasyAvControlGuide extends LitElement {
     a {
       color: var(--primary-color);
     }
-  `;
+  `,
+  ];
 }
 
 if (!customElements.get("easy-av-control-guide")) {

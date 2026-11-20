@@ -12,6 +12,8 @@ import { commandLabel } from "../labels";
 import type { HomeAssistant, RoomView } from "../types";
 import type { Room } from "./model";
 import { t } from "./strings";
+import { ltekChrome, ltekTokens } from "./ltek-styles";
+
 
 type Target = {
   via: "activity_commands" | "device_commands" | "remote" | "media_player" | "entity" | null;
@@ -236,7 +238,10 @@ export class EasyAvControlRemotePreview extends LitElement {
     </div>`;
   }
 
-  static styles = css`
+  static styles = [
+    ltekTokens,
+    ltekChrome,
+    css`
     :host {
       display: block;
     }
@@ -328,7 +333,8 @@ export class EasyAvControlRemotePreview extends LitElement {
     p.hint {
       color: var(--secondary-text-color);
     }
-  `;
+  `,
+  ];
 }
 
 if (!customElements.get("easy-av-control-remote-preview")) {

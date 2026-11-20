@@ -9,6 +9,8 @@ import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 import type { HomeAssistant } from "../types";
 import type { Room } from "./model";
 import { t } from "./strings";
+import { ltekChrome, ltekTokens } from "./ltek-styles";
+
 
 type Row = {
   kind: string;
@@ -38,12 +40,13 @@ const ICONS: Record<string, string> = {
   wait: "mdi:timer-sand",
   reload: "mdi:reload",
   ready: "mdi:lan-connect",
+  status: "mdi:state-machine",
   already_on: "mdi:check",
   step: "mdi:tune-variant",
 };
 
 /** Rows that belong to the device or steps header above them. */
-const NESTED = new Set(["boot", "reload", "ready", "turn_on", "wait", "already_on", "step", "turn_off"]);
+const NESTED = new Set(["boot", "reload", "ready", "status", "turn_on", "wait", "already_on", "step", "turn_off"]);
 
 export class EasyAvControlFlow extends LitElement {
   static properties = {
@@ -167,7 +170,7 @@ export class EasyAvControlFlow extends LitElement {
       case "outlets_on":
         return this._t("flow.outlets_on", { outlets: this._list(row.entities) });
       case "outlets_off":
-        return this._t(row.background ? "flow.outlets_off_later" : "flow.outlets_off", {
+        return this._t(row.after_status ? "flow.outlets_off_status" : row.background ? "flow.outlets_off_later" : "flow.outlets_off", {
           outlets: this._list(row.entities),
         });
       case "outlet_keep":
@@ -204,6 +207,12 @@ export class EasyAvControlFlow extends LitElement {
         }
         return prefix + this._t(row.reason === "unused" ? "flow.turn_off_unused" : `flow.${row.kind}`, { device });
       }
+      case "status":
+        return this._t(row.target === "off" ? "flow.status_off" : "flow.status_on", {
+          device,
+          entity: this._entity(row.entity_id),
+          timeout: this._seconds(row.timeout),
+        });
       case "wait":
         return this._t(row.reason === "delay_after_on" ? "flow.wait_on" : "flow.wait", {
           seconds: this._seconds(row.seconds),
@@ -234,6 +243,9 @@ export class EasyAvControlFlow extends LitElement {
     const notes: string[] = [];
     if (typeof row.condition === "string") notes.push(this._t(`flow.if.${row.condition}`));
     if (row.kind === "ready" && row.reload) notes.push(this._t("flow.reload_if_needed"));
+    if (row.kind === "status" && Number(row.debounce) > 0) {
+      notes.push(this._t("flow.debounce", { seconds: this._seconds(row.debounce) }));
+    }
     if (row.kind === "turn_off" && Number(row.cooldown) > 0) {
       notes.push(this._t("flow.cooldown", { seconds: this._seconds(row.cooldown) }));
     }
@@ -371,7 +383,10 @@ export class EasyAvControlFlow extends LitElement {
       <p class="summary">${summary}</p>`;
   }
 
-  static styles = css`
+  static styles = [
+    ltekTokens,
+    ltekChrome,
+    css`
     :host {
       display: block;
     }
@@ -392,9 +407,9 @@ export class EasyAvControlFlow extends LitElement {
       cursor: pointer;
     }
     .modes button.active {
-      background: var(--primary-color);
-      border-color: var(--primary-color);
-      color: var(--text-primary-color, #fff);
+      background: var(--ltek-c-accent);
+      border-color: var(--ltek-c-accent);
+      color: var(--ltek-c-on-accent);
     }
     .modes select {
       font: inherit;
@@ -515,7 +530,8 @@ export class EasyAvControlFlow extends LitElement {
         font-size: 0.75em;
       }
     }
-  `;
+  `,
+  ];
 }
 
 if (!customElements.get("easy-av-control-flow")) {

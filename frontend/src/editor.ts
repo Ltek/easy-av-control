@@ -1,7 +1,8 @@
 /** Visual editor of the remote control card. */
-import { LitElement, html, nothing, type TemplateResult } from "lit";
+import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 
 import { localize } from "./localize";
+import { REPO, ltekChrome, ltekTokens } from "./panel/ltek-styles";
 import type { CardConfig, HomeAssistant, RoomInfo } from "./types";
 
 export class EasyAvControlRemoteCardEditor extends LitElement {
@@ -62,14 +63,34 @@ export class EasyAvControlRemoteCardEditor extends LitElement {
     if (this._rooms && !known && this._config.room) {
       data.room = this._config.room;
     }
-    return html`<ha-form
-      .hass=${this.hass}
-      .data=${data}
-      .schema=${this._schema()}
-      .computeLabel=${(s: { name: string }) => localize(this.hass?.language, `editor.${s.name}`)}
-      @value-changed=${this._valueChanged}
-    ></ha-form>`;
+    const t = (key: string) => localize(this.hass?.language, key);
+    return html`<details class="ltek-sec" open>
+        <summary>
+          <ha-icon icon="mdi:remote-tv"></ha-icon>${t("editor.section")}
+          <ha-icon class="chev" icon="mdi:chevron-down"></ha-icon>
+        </summary>
+        <div class="ltek-body">
+          <p class="ltek-hint">${t("editor.hint")}</p>
+          <ha-form
+            .hass=${this.hass}
+            .data=${data}
+            .schema=${this._schema()}
+            .computeLabel=${(s: { name: string }) => t(`editor.${s.name}`)}
+            @value-changed=${this._valueChanged}
+          ></ha-form>
+        </div>
+      </details>
+      <div class="ltek-links">
+        <a class="ltek-star" href=${REPO} target="_blank" rel="noopener">${t("editor.star")}</a>
+        <a class="ltek-issue" href="${REPO}/issues" target="_blank" rel="noopener">${t("editor.report")}</a>
+      </div>`;
   }
+
+  static styles = [ltekTokens, ltekChrome, css`
+    :host {
+      display: block;
+    }
+  `];
 
   private _valueChanged(ev: CustomEvent<{ value: Record<string, unknown> }>): void {
     ev.stopPropagation();

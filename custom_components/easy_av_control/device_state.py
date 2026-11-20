@@ -27,7 +27,6 @@ from homeassistant.core import (
     State,
     callback,
 )
-from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.util import dt as dt_util
 
@@ -61,6 +60,7 @@ from .device_profiles import (
     classify,
     resolve,
 )
+from .profile_library import profile_for_device
 
 RESULT_OK = "ok"
 RESULT_ERROR = "error"
@@ -96,14 +96,6 @@ class StateSource:
         return self.group(state), self.value(state)
 
 
-def _specific_profile(profiles: dict[str, Profile], hass: HomeAssistant, entity_id: str) -> Profile | None:
-    """The device entity's integration's own profile (never the generic one)."""
-    entry = er.async_get(hass).async_get(entity_id)
-    if entry is None:
-        return None
-    return next((p for p in profiles.values() if not p.generic and p.integration == entry.platform), None)
-
-
 def effective_source(
     hass: HomeAssistant, profiles: dict[str, Profile], device: dict[str, Any]
 ) -> StateSource | None:
@@ -112,7 +104,7 @@ def effective_source(
     if raw == STATE_SOURCE_NONE:
         return None
     entity_id = device[CONF_ENTITY_ID]
-    profile = _specific_profile(profiles, hass, entity_id)
+    profile = profile_for_device(hass, profiles, device)
 
     if isinstance(raw, dict):
         indicator = {k: v for k, v in raw.items() if k != CONF_ENTITY_ID}

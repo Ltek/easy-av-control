@@ -34,7 +34,18 @@ import {
   type Sources,
   type Step,
 } from "./model";
+import {
+  FAILURES,
+  STATE_KEYS,
+  WAIT_MODES,
+  applyStateForm,
+  detectedChanges,
+  stateFormData,
+  type Detect,
+  type ProfileView,
+} from "./device-state";
 import "./flow-view";
+import { ltekChrome, ltekTokens } from "./ltek-styles";
 import "./remote-preview";
 import { t } from "./strings";
 
@@ -49,7 +60,29 @@ function splitStates(value: string | undefined): string | string[] | undefined {
   return states.length > 1 ? states : states[0];
 }
 
-const SECONDS = { number: { min: 0, max: 3600, step: 1, mode: "box", unit_of_measurement: "s" } };
+/** Times are sliders (design guide), each with a range that suits it. */
+const slider = (max: number, step = 1, min = 0) => ({
+  number: { min, max, step, mode: "slider", unit_of_measurement: "s" },
+});
+const SECONDS = slider(600);
+
+/** The icon of each panel, by its title's text key. */
+const CARD_ICONS: Record<string, string> = {
+  section_device: "mdi:television",
+  section_state: "mdi:state-machine",
+  section_power: "mdi:power-socket-eu",
+  section_delays: "mdi:timer-sand",
+  section_ready: "mdi:lan-connect",
+  card_settings: "mdi:tune-vertical",
+  section_general: "mdi:information-outline",
+  section_activity_devices: "mdi:format-list-numbered",
+  steps: "mdi:playlist-play",
+  remote: "mdi:remote",
+  quick_select: "mdi:gesture-tap-button",
+  section_flow: "mdi:sitemap-outline",
+  section_remote_preview: "mdi:cellphone-screenshot",
+};
+const SHORT = slider(120);
 
 export class EasyAvControlRoomEditor extends LitElement {
   static properties = {
@@ -63,6 +96,8 @@ export class EasyAvControlRoomEditor extends LitElement {
     _view: { state: true },
     _notice: { state: true },
     _related: { state: true },
+    _detect: { state: true },
+    profiles: { attribute: false },
   };
 
   declare hass: HomeAssistant;
@@ -79,6 +114,13 @@ export class EasyAvControlRoomEditor extends LitElement {
   /** Numbers and selects each device entity offers automatically */
   declare _related: Related;
   private _relatedKey = "";
+  /** Detected box per device: what its profile finds (config/detect), keyed by entity + state settings */
+  declare _detect: Record<string, Detect>;
+  private _detectAsked = new Set<string>();
+  /** All profiles (profiles/list), for the profile picker; given by the panel */
+  declare profiles: ProfileView[];
+  /** Panels the user closed (or opened, for the ones that start closed), so a redraw keeps them */
+  private _toggled = new Set<string>();
 
   constructor() {
     super();
@@ -87,6 +129,8 @@ export class EasyAvControlRoomEditor extends LitElement {
     this.sources = {};
     this.soundModes = {};
     this._related = {};
+    this._detect = {};
+    this.profiles = [];
   }
 
   /** Ask for the related entities whenever the room's device entities change. */
@@ -201,7 +245,8 @@ export class EasyAvControlRoomEditor extends LitElement {
         : this._tab === "activities"
           ? this._renderActivityList()
           : this._renderYaml()}
-      <button class="danger delete-room" @click=${() => this.dispatchEvent(new CustomEvent("delete-room"))}>
+      <button class="ltek-btn danger delete-room" @click=${() => this.dispatchEvent(new CustomEvent("delete-room"))}>
+        <ha-icon icon="mdi:trash-can-outline"></ha-icon>
         ${this._t("delete_room")}
       </button>
     `;
@@ -214,28 +259,48 @@ export class EasyAvControlRoomEditor extends LitElement {
           <ha-icon icon="mdi:arrow-left"></ha-icon>
           <span>${back}</span>
         </button>
-        <button class="danger" @click=${onDelete}>${this._t("delete")}</button>
+        <button class="ltek-btn danger" @click=${onDelete}>
+          <ha-icon icon="mdi:trash-can-outline"></ha-icon> ${this._t("delete")}
+        </button>
       </div>
       <h2>${title}</h2>
       ${this._notice ? html`<div class="notice">${this._notice}</div>` : nothing}`;
   }
 
-  /** A titled card with a short explanation. */
-  private _card(title: string, hint: string, body: TemplateResult): TemplateResult {
-    return html`<section class="card">
-      <h3>${title}</h3>
-      ${hint ? html`<p class="hint">${hint}</p>` : nothing}
-      ${body}
-    </section>`;
+  /** A top-level panel (design guide): accent border when open; open or closed survives every redraw. */
+  private _panel(
+    key: string,
+    icon: string,
+    title: string,
+    hint: string,
+    body: TemplateResult,
+    startOpen = true,
+  ): TemplateResult {
+    const open = this._toggled.has(key) ? !startOpen : startOpen;
+    return html`<details
+      class="ltek-sec"
+      ?open=${open}
+      @toggle=${(ev: Event) => {
+        const now = (ev.target as HTMLDetailsElement).open;
+        if (now === startOpen) this._toggled.delete(key);
+        else this._toggled.add(key);
+      }}
+    >
+      <summary><ha-icon icon=${icon}></ha-icon>${title}<ha-icon class="chev" icon="mdi:chevron-down"></ha-icon></summary>
+      <div class="ltek-body">${hint ? html`<p class="ltek-hint">${hint}</p>` : nothing}${body}</div>
+    </details>`;
   }
 
-  /** The collapsed card for rarely needed settings. */
+  /** A titled panel with a short explanation. */
+  private _card(title: string, hint: string, body: TemplateResult, icon?: string): TemplateResult {
+    const key = Object.entries(CARD_ICONS).find(([k]) => this._t(k) === title);
+    return this._panel(`${this._view.kind}:${title}`, icon ?? key?.[1] ?? "mdi:tune-variant", title, hint, body);
+  }
+
+  /** The panel for rarely needed settings: starts closed. */
   private _advanced(hint: string, body: TemplateResult): TemplateResult {
-    return html`<details class="card advanced">
-      <summary>${this._t("section_advanced")}</summary>
-      <p class="hint">${hint}</p>
-      ${body}
-    </details>`;
+    const title = this._t("section_advanced");
+    return this._panel(`${this._view.kind}:${title}`, "mdi:cog-outline", title, hint, body, false);
   }
 
   // ------------------------------------------------------------------
@@ -250,9 +315,11 @@ export class EasyAvControlRoomEditor extends LitElement {
   private _renderDeviceList(): TemplateResult {
     const devices = Object.entries(this.room.devices ?? {});
     return html`
-      <p class="hint">${this._t("devices_intro")}</p>
+      <p class="ltek-hint">${this._t("devices_intro")}</p>
+      <div class="ltek-list">
+        <button class="ltek-add" @click=${this._addDevice}>+ ${this._t("add_device")}</button>
       ${devices.length
-        ? html`<div class="list">
+        ? html`
             ${devices.map(([id, device]) => {
               const known = !device.entity_id || this._entityKnown(device.entity_id);
               return this._row(
@@ -260,11 +327,11 @@ export class EasyAvControlRoomEditor extends LitElement {
                 device.entity_id || this._t("no_entity"),
                 () => this._show({ kind: "device", id }),
                 known ? undefined : this._t("entity_missing"),
+                this._deviceIcon(device),
               );
-            })}
-          </div>`
-        : html`<p class="empty">${this._t("devices_empty")}</p>`}
-      <button class="add" @click=${this._addDevice}>+ ${this._t("add_device")}</button>
+            })}`
+        : html`<p class="ltek-hint">${this._t("devices_empty")}</p>`}
+      </div>
     `;
   }
 
@@ -272,15 +339,31 @@ export class EasyAvControlRoomEditor extends LitElement {
     return entityId in this.hass.states || entityId in (this.hass.entities ?? {});
   }
 
-  private _row(title: string, sub: string, open: () => void, warning?: string): TemplateResult {
-    return html`<button class="row-item" @click=${open}>
-      <span class="row-text">
-        <span class="title">${title}</span>
-        <span class="sub">${sub}</span>
-        ${warning ? html`<span class="warn">${warning}</span>` : nothing}
+  private _row(
+    title: string,
+    sub: string,
+    open: () => void,
+    warning?: string,
+    icon = "mdi:play-circle-outline",
+  ): TemplateResult {
+    return html`<button class="ltek-item" @click=${open}>
+      <ha-icon class="lead" icon=${icon}></ha-icon>
+      <span class="ltek-item-text">
+        <span class="ltek-name">${title}</span>
+        <span class="ltek-subline">${sub}</span>
+        ${warning ? html`<span class="ltek-warn ltek-subline">${warning}</span>` : nothing}
       </span>
-      <ha-icon icon="mdi:chevron-right"></ha-icon>
+      <ha-icon class="ltek-act" icon="mdi:chevron-right"></ha-icon>
     </button>`;
+  }
+
+  /** The device's own icon, else one for its domain. */
+  private _deviceIcon(device: Device): string {
+    const state = device.entity_id ? this.hass.states[device.entity_id] : undefined;
+    const own = state?.attributes.icon as string | undefined;
+    if (own) return own;
+    const domain = device.entity_id?.split(".")[0];
+    return domain === "remote" ? "mdi:remote" : domain === "switch" ? "mdi:power-socket-eu" : "mdi:television";
   }
 
   private _deviceData(device: Device): Obj {
@@ -336,7 +419,7 @@ export class EasyAvControlRoomEditor extends LitElement {
 
     return html`
       ${this._detailHeader(this._t("tab_devices"), this._deviceTitle(id, device), () => this._deleteDevice(id))}
-      ${usage.length ? html`<p class="hint">${this._t("used_by", { where: usage.join(", ") })}</p>` : nothing}
+      ${usage.length ? html`<p class="ltek-hint">${this._t("used_by", { where: usage.join(", ") })}</p>` : nothing}
 
       ${this._card(
         this._t("section_device"),
@@ -346,14 +429,17 @@ export class EasyAvControlRoomEditor extends LitElement {
           { name: "name", selector: { text: {} } },
           { name: "remote_entity", selector: { entity: { filter: { domain: "remote" } } } },
         ]),
+        "mdi:television",
       )}
+      ${this._card(this._t("section_state"), this._t("hint_state"), this._renderState(id, device), "mdi:state-machine")}
       ${this._card(
         this._t("section_power"),
         this._t("hint_power"),
         this._deviceForm(id, data, [
           { name: "power_switch", selector: { entity: { filter: { domain: ["switch", "input_boolean", "light"] } } } },
-          ...(device.power_switch ? [{ name: "delay_after_power", selector: SECONDS }] : []),
+          ...(device.power_switch ? [{ name: "delay_after_power", selector: SHORT }] : []),
         ]),
+        "mdi:power-socket-eu",
       )}
       ${this._card(
         this._t("section_delays"),
@@ -362,12 +448,13 @@ export class EasyAvControlRoomEditor extends LitElement {
           { name: "delay_after_on", selector: SECONDS },
           { name: "delay_after_off", selector: SECONDS },
         ]),
+        "mdi:timer-sand",
       )}
       ${this._card(
         this._t("section_ready"),
         this._t("hint_ready"),
         html`${remote && !presetApplied
-            ? html`<button class="add preset" @click=${() => this._applyReadyPreset(id, device, remote)}>
+            ? html`<button class="ltek-btn preset" @click=${() => this._applyReadyPreset(id, device, remote)}>
                 ${this._t("ready_preset", { entity: remote })}
               </button>`
             : nothing}
@@ -410,6 +497,138 @@ export class EasyAvControlRoomEditor extends LitElement {
     `;
   }
 
+  /** config/detect for a device as it is being edited; cached per entity and state settings. */
+  private _detectFor(device: Device): Detect | undefined {
+    if (!device.entity_id || !this.hass) return undefined;
+    const state = Object.fromEntries(STATE_KEYS.filter((k) => device[k] !== undefined).map((k) => [k, device[k]]));
+    const key = JSON.stringify([device.entity_id, state]);
+    if (!this._detectAsked.has(key)) {
+      this._detectAsked.add(key);
+      this.hass
+        .callWS<Detect>({ type: "easy_av_control/config/detect", entity_id: device.entity_id, device: state })
+        .then((result) => (this._detect = { ...this._detect, [key]: result }))
+        .catch(() => this._detectAsked.delete(key));
+    }
+    return this._detect[key];
+  }
+
+  /** The Detected box and the status settings of a device. */
+  private _renderState(id: string, device: Device): TemplateResult {
+    const detect = this._detectFor(device);
+    if (!device.entity_id) {
+      return html`<p class="ltek-hint">${this._t("no_entity")}</p>`;
+    }
+    const data = stateFormData(device, detect);
+    const integration = device.entity_id ? this.hass.entities?.[device.entity_id]?.platform : undefined;
+    const profileOptions = [
+      { value: "__auto", label: this._t("profile.auto") },
+      ...this.profiles
+        .filter((p) => !p.generic && (p.integration === integration || p.id === device.profile))
+        .map((p) => ({ value: p.id, label: `${p.name} (${this._t(p.source === "user" ? "profiles_yours" : "profiles_builtin")})` })),
+    ];
+    const hasStatus = !!detect?.state;
+    const options = (prefix: string, values: readonly string[]) =>
+      values.map((v) => ({ value: v, label: this._t(`${prefix}.${v}`) }));
+    const offFailures = FAILURES.map((v) => ({ value: v, label: this._t(v === "stop" ? "failure_off.stop" : `failure.${v}`) }));
+    const schema: Obj[] = [
+      ...(profileOptions.length > 1
+        ? [{ name: "profile", selector: { select: { options: profileOptions, mode: "dropdown" } } }]
+        : []),
+      {
+        name: "state_source",
+        selector: {
+          select: {
+            mode: "dropdown",
+            options: [
+              { value: "auto", label: this._t("state_source.auto") },
+              { value: "none", label: this._t("state_source.none") },
+              ...(data.state_source === "custom" ? [{ value: "custom", label: "YAML" }] : []),
+            ],
+          },
+        },
+      },
+      ...(hasStatus
+        ? [
+            { name: "wait_on", selector: { select: { mode: "dropdown", options: options("wait", WAIT_MODES) } } },
+            { name: "timeout_on", selector: slider(600, 5, 5) },
+            { name: "on_failure_on", selector: { select: { mode: "dropdown", options: options("failure", FAILURES) } } },
+            { name: "wait_off", selector: { select: { mode: "dropdown", options: options("wait", WAIT_MODES) } } },
+            { name: "timeout_off", selector: slider(900, 5, 5) },
+            { name: "on_failure_off", selector: { select: { mode: "dropdown", options: offFailures } } },
+            { name: "debounce", selector: slider(30, 0.5) },
+          ]
+        : []),
+    ];
+    return html`${this._renderDetected(id, device, detect)}
+      ${detect && !hasStatus ? html`<p class="ltek-hint">${this._t("state_fixed_only")}</p>` : nothing}
+      <ha-form
+        .hass=${this.hass}
+        .data=${data}
+        .schema=${schema}
+        .computeLabel=${(s: { name: string }) => this._t(s.name === "state_source" ? "state_source" : `field.${s.name}`)}
+        .computeHelper=${this._helper}
+        @value-changed=${(ev: CustomEvent) => {
+          const next = applyStateForm(device, { ...data, ...(ev.detail.value as Obj) }, detect);
+          this._emit({ ...this.room, devices: { ...this.room.devices, [id]: next } });
+        }}
+      ></ha-form>`;
+  }
+
+  /** What the device's profile found, with one click to use it. */
+  private _renderDetected(id: string, device: Device, detect: Detect | undefined): TemplateResult {
+    if (!detect) {
+      return html`<p class="ltek-hint">${this._t("loading")}</p>`;
+    }
+    if (!detect.profile) {
+      return html`<p class="ltek-hint">${this._t("detected_none")}</p>`;
+    }
+    const { profile, found, state } = detect;
+    const changes = detectedChanges(device, detect);
+    const lines: string[] = [];
+    if (found?.indicator) {
+      lines.push(
+        this._t("detected_found_indicator", { entity: this._entityName(found.indicator) }) +
+          (found.attribute ? `, ${this._t("detected_found_attribute", { attribute: found.attribute })}` : ""),
+      );
+    }
+    if (found?.remote_entity) lines.push(this._t("detected_found_remote", { entity: this._entityName(found.remote_entity) }));
+    if (found?.power_switch) lines.push(this._t("detected_found_outlet", { entity: this._entityName(found.power_switch) }));
+    if (found?.settings?.length) {
+      lines.push(this._t("detected_found_settings", { entities: found.settings.map((e) => this._entityName(e)).join(", ") }));
+    }
+    if (detect.siblings.length) {
+      lines.push(this._t("detected_siblings", { integrations: detect.siblings.map((s) => s.integration).join(", ") }));
+      const roles = Object.entries(detect.roles)
+        .filter(([, i]) => i)
+        .map(([role, i]) => this._t("detected_role", { role: this._t(`role.${role}`), integration: i as string }));
+      if (roles.length) lines.push(roles.join(" · "));
+    }
+    return html`<div class="ltek-item detected open">
+      <ha-icon class="lead" icon="mdi:auto-fix"></ha-icon>
+      <span class="ltek-item-text">
+        <span class="ltek-name">${this._t("detected", { name: profile.name })}</span>
+        ${lines.map((l) => html`<span class="ltek-subline">${l}</span>`)}
+        ${state ? html`<span class="ltek-subline">${this._t("detected_now", { value: state.value ?? state.group })}</span>` : nothing}
+      </span>
+      <span class="ltek-badge ${profile.source === "user" ? "lib" : "accent"}">
+        ${this._t(profile.source === "user" ? "profiles_yours" : "profiles_builtin")}
+      </span>
+      ${profile.tested ? nothing : html`<span class="ltek-badge warn" title=${this._t("profile_untested")}>!</span>`}
+      ${Object.keys(changes).length
+        ? html`<button
+            class="ltek-btn primary"
+            @click=${() => this._emit({ ...this.room, devices: { ...this.room.devices, [id]: { ...device, ...changes } } })}
+          >
+            ${this._t("detected_use")}
+          </button>`
+        : html`<span class="ltek-badge ok">${this._t("detected_applied")}</span>`}
+    </div>`;
+  }
+
+  private _entityName(entityId: string): string {
+    return (this.hass.states[entityId]?.attributes.friendly_name as string | undefined) ?? entityId;
+  }
+
   private _applyReadyPreset(id: string, device: Device, remote: string): void {
     // Proven for an Apple TV: connected only while its remote is on; it can take a minute after power-on
     const ready = { entity_id: remote, state: "on", timeout: 60, reload_integration: true, on_timeout: "continue" };
@@ -442,6 +661,11 @@ export class EasyAvControlRoomEditor extends LitElement {
       delay_after_off: v.delay_after_off as number | undefined,
       commands: v.commands as Obj | undefined,
     }) as Device;
+    // Not part of this form: the Device state keys, kept as they are
+    const before = this.room.devices?.[id] ?? ({} as Device);
+    for (const key of STATE_KEYS) {
+      if (before[key] !== undefined) device[key] = before[key];
+    }
     // Not part of the form: kept as they are, an empty list included
     const settings = this.room.devices?.[id]?.settings;
     if (settings !== undefined) {
@@ -510,19 +734,23 @@ export class EasyAvControlRoomEditor extends LitElement {
     const names = (activity: Activity) =>
       (activity.devices ?? []).map((d) => this.room.devices?.[d]?.name ?? d).join(" → ");
     return html`
-      <p class="hint">${this._t("activities_intro")}</p>
-      ${activities.length
-        ? html`<div class="list">
-            ${activities.map(([id, activity]) =>
-              this._row(activity.name ?? id, names(activity) || this._t("no_devices"), () =>
-                this._show({ kind: "activity", id }),
+      <p class="ltek-hint">${this._t("activities_intro")}</p>
+      <div class="ltek-list">
+        ${Object.keys(this.room.devices ?? {}).length
+          ? html`<button class="ltek-add" @click=${this._addActivity}>+ ${this._t("add_activity")}</button>`
+          : html`<p class="ltek-hint">${this._t("needs_devices")}</p>`}
+        ${activities.length
+          ? activities.map(([id, activity]) =>
+              this._row(
+                activity.name ?? id,
+                names(activity) || this._t("no_devices"),
+                () => this._show({ kind: "activity", id }),
+                undefined,
+                activity.icon ?? "mdi:play-circle-outline",
               ),
-            )}
-          </div>`
-        : html`<p class="empty">${this._t("activities_empty")}</p>`}
-      ${Object.keys(this.room.devices ?? {}).length
-        ? html`<button class="add" @click=${this._addActivity}>+ ${this._t("add_activity")}</button>`
-        : html`<p class="hint">${this._t("needs_devices")}</p>`}
+            )
+          : html`<p class="ltek-hint">${this._t("activities_empty")}</p>`}
+      </div>
     `;
   }
 
@@ -657,7 +885,7 @@ export class EasyAvControlRoomEditor extends LitElement {
 
       ${this._advanced(
         this._t("hint_activity_advanced"),
-        html`<p class="hint">${this._t("activity_id_hint", { id })}</p>
+        html`<p class="ltek-hint">${this._t("activity_id_hint", { id })}</p>
           <ha-form
             .hass=${this.hass}
             .data=${{
@@ -813,10 +1041,10 @@ export class EasyAvControlRoomEditor extends LitElement {
         </div>`;
       })}
       ${players.length
-        ? html`<button class="add" @click=${() => setQuick([...quick, { device: players[players.length - 1], source: "" }])}>
+        ? html`<button class="ltek-add" @click=${() => setQuick([...quick, { device: players[players.length - 1], source: "" }])}>
             + ${this._t("add_quick_select")}
           </button>`
-        : html`<p class="hint">${this._t("quick_select_no_player")}</p>`}`;
+        : html`<p class="ltek-hint">${this._t("quick_select_no_player")}</p>`}`;
   }
 
   /** The list a device setting chooses from: live, else remembered. */
@@ -976,7 +1204,7 @@ export class EasyAvControlRoomEditor extends LitElement {
 
     if (chosen === undefined) {
       return html`${mode}
-        <p class="hint">
+        <p class="ltek-hint">
           ${fromDevices.length
             ? this._t("settings_auto_shows", { list: fromDevices.map((s) => this._describeSetting(s, true)).join(", ") })
             : this._t("settings_auto_none")}
@@ -987,7 +1215,7 @@ export class EasyAvControlRoomEditor extends LitElement {
     const players = devices.filter((d) => this.room.devices?.[d]?.entity_id?.startsWith("media_player."));
     return html`${mode}
       ${this._renderSettingItems(chosen, setSettings, devices)}
-      ${chosen.length ? nothing : html`<p class="hint">${this._t("settings_none")}</p>`}
+      ${chosen.length ? nothing : html`<p class="ltek-hint">${this._t("settings_none")}</p>`}
       ${devices.length
         ? html`<button
             class="add"
@@ -1021,7 +1249,7 @@ export class EasyAvControlRoomEditor extends LitElement {
 
     if (chosen === undefined) {
       return html`${mode}
-        <p class="hint">
+        <p class="ltek-hint">
           ${auto.length
             ? this._t("settings_auto_shows", { list: auto.map((s) => this._describeSetting(s, false)).join(", ") })
             : this._t("device_settings_auto_none")}
@@ -1031,7 +1259,7 @@ export class EasyAvControlRoomEditor extends LitElement {
     const isPlayer = device.entity_id?.startsWith("media_player.");
     return html`${mode}
       ${this._renderSettingItems(chosen, setSettings, null, id)}
-      ${chosen.length ? nothing : html`<p class="hint">${this._t("device_settings_none")}</p>`}
+      ${chosen.length ? nothing : html`<p class="ltek-hint">${this._t("device_settings_none")}</p>`}
       <button
         class="add"
         @click=${() => setSettings([...chosen, isPlayer ? { setting: "sound_mode" } : { entity: "" }])}
@@ -1066,7 +1294,7 @@ export class EasyAvControlRoomEditor extends LitElement {
   // ------------------------------------------------------------------
 
   private _renderYaml(): TemplateResult {
-    return html`<p class="hint">${this._t("yaml_intro")}</p>
+    return html`<p class="ltek-hint">${this._t("yaml_intro")}</p>
       <ha-form
         .hass=${this.hass}
         .data=${{ yaml: this.room }}
@@ -1093,14 +1321,14 @@ export class EasyAvControlRoomEditor extends LitElement {
       set(next);
     };
     return html`<span class="move">
-      <button title=${this._t("move_up")} aria-label=${this._t("move_up")} ?disabled=${index === 0} @click=${() => move(index - 1)}>
+      <button class="ltek-act" title=${this._t("move_up")} aria-label=${this._t("move_up")} ?disabled=${index === 0} @click=${() => move(index - 1)}>
         <ha-icon icon="mdi:arrow-up"></ha-icon>
       </button>
-      <button title=${this._t("move_down")} aria-label=${this._t("move_down")} ?disabled=${index === list.length - 1} @click=${() => move(index + 1)}>
+      <button class="ltek-act" title=${this._t("move_down")} aria-label=${this._t("move_down")} ?disabled=${index === list.length - 1} @click=${() => move(index + 1)}>
         <ha-icon icon="mdi:arrow-down"></ha-icon>
       </button>
-      <button title=${this._t("delete")} aria-label=${this._t("delete")} @click=${() => set(list.filter((_, i) => i !== index))}>
-        <ha-icon icon="mdi:close"></ha-icon>
+      <button class="ltek-del" title=${this._t("delete")} aria-label=${this._t("delete")} @click=${() => set(list.filter((_, i) => i !== index))}>
+        <ha-icon icon="mdi:trash-can-outline"></ha-icon>
       </button>
     </span>`;
   }
@@ -1127,9 +1355,17 @@ export class EasyAvControlRoomEditor extends LitElement {
     ></ha-form>`;
   }
 
-  static styles = css`
+  static styles = [
+    ltekTokens,
+    ltekChrome,
+    css`
     :host {
       display: block;
+    }
+    .detected {
+      margin-bottom: var(--ltek-sp-4);
+      align-items: flex-start;
+      flex-wrap: wrap;
     }
     .hint,
     .sub {
@@ -1349,7 +1585,51 @@ export class EasyAvControlRoomEditor extends LitElement {
       display: block;
       max-width: 320px;
     }
-  `;
+    /* Design guide over the original layout */
+    .tabs button {
+      font-size: var(--ltek-fs-label);
+    }
+    .tabs button.active {
+      color: var(--ltek-c-accent);
+      border-bottom-color: var(--ltek-c-accent);
+    }
+    .step {
+      background: var(--ltek-c-surface-raised);
+      border: 1px solid var(--ltek-c-border-soft);
+      border-radius: var(--ltek-r-card);
+    }
+    .move {
+      gap: var(--ltek-sp-2);
+    }
+    .move button.ltek-act,
+    .move button.ltek-del {
+      padding: 2px;
+    }
+    h2 {
+      color: var(--ltek-c-text);
+    }
+    button.back {
+      color: var(--ltek-c-accent);
+    }
+    .notice {
+      background: none;
+      color: var(--ltek-c-warning);
+      border: 1px solid var(--ltek-c-warning);
+      border-radius: var(--ltek-r-md);
+    }
+    button.delete-room {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--ltek-sp-2);
+      margin-top: 32px;
+    }
+    .detail-head .ltek-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--ltek-sp-1);
+    }
+  `,
+  ];
 }
 
 if (!customElements.get("easy-av-control-room-editor")) {

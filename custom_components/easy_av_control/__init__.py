@@ -44,9 +44,9 @@ from .const import (
     SIGNAL_ROOMS_UPDATED,
 )
 from .coordinator import EasyAVControlCoordinator
-from .device_profiles import Profile, async_load_profiles
 from .migration import migrate_v1_to_v2
 from .model import expected_unique_ids
+from .profile_library import async_get_library
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -142,14 +142,6 @@ def _register_services(hass: HomeAssistant) -> None:
     hass.services.async_register(DOMAIN, SERVICE_RELOAD, handle_reload)
 
 
-async def _async_profiles(hass: HomeAssistant) -> dict[str, Profile]:
-    """The built-in integration profiles, read once per Home Assistant start."""
-    key = f"{DOMAIN}_profiles"
-    if key not in hass.data:
-        hass.data[key] = await async_load_profiles(hass)
-    return hass.data[key]
-
-
 async def _async_register_frontend(hass: HomeAssistant) -> None:
     """Serve the remote control card and the configuration panel.
 
@@ -236,7 +228,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
 
     coordinator = EasyAVControlCoordinator(hass, entry)
-    coordinator.profiles = await _async_profiles(hass)
+    coordinator.profiles = (await async_get_library(hass)).profiles
     # Raises ConfigEntryError on an invalid configuration
     await coordinator.async_config_entry_first_refresh()
     hass.data[DOMAIN][entry.entry_id] = coordinator

@@ -68,6 +68,8 @@ CONF_TARGET: Final = "target"
 
 # Device states (PLAN.md phase 2): what says a device is on, how to wait, what to do when a check fails
 CONF_STATE_SOURCE: Final = "state_source"
+# The profile a device uses, by id; absent = the one for its integration
+CONF_PROFILE: Final = "profile"
 CONF_ATTRIBUTE: Final = "attribute"
 CONF_AVAILABLE_IS_ON: Final = "available_is_on"
 CONF_WAIT_ON: Final = "wait_on"

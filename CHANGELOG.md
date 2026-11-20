@@ -1,5 +1,25 @@
 # Changelog
 
+## v2026.11.20.4
+
+**Added**
+- **Profiles page** in the panel: every built-in profile (locked, with a summary, a read-only view and
+  **Duplicate**) and your own (edit as YAML, duplicate, delete). **Export** and **Import** as text; an import
+  never replaces a profile you have (a taken ID gets a new one). Your own profile for an integration is used
+  instead of the built-in one; a device can name one with `profile: <id>`.
+- **Device state** on every device page: what was **Detected** (the profile, the status entity, its state now,
+  the remote, outlet and settings it found, and which integration does which job for a device several cover),
+  **Use these** for the remote and outlet, and the status settings: profile, status (automatic / none), wait
+  for when turning on and before cutting the outlet, timeouts, debounce, and what to do when the device
+  doesn't come on or go off. Only what differs from the profile is written.
+- **The flow view** shows the status waits ("Wait until Projector says it's on, at most 2:00") and outlets cut
+  once their devices say they're off.
+
+**Changed**
+- **Every settings page follows the Ltek card design** (the panel, the profile pages and the card editor):
+  panels with an accent border when open, list rows with action icons, a trash icon for delete, the dashed
+  **+ Add** at the top of each list, sliders for every time, and the Star / Report links.
+
 ## v2026.11.20.3
 
 **Added: waiting for the devices' own states**

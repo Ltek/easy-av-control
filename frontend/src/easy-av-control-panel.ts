@@ -7,7 +7,10 @@
  */
 import { LitElement, css, html, nothing, type PropertyValues, type TemplateResult } from "lit";
 
+import type { ProfileView } from "./panel/device-state";
 import "./panel/guide";
+import { REPO, ltekChrome, ltekTokens } from "./panel/ltek-styles";
+import "./panel/profiles";
 import "./panel/room-editor";
 import { clean, slugify, uniqueKey, type Room, type Rooms, type Sources } from "./panel/model";
 import { t } from "./panel/strings";
@@ -54,6 +57,8 @@ export class EasyAvControlPanel extends LitElement {
     _sources: { state: true },
     _soundModes: { state: true },
     _adding: { state: true },
+    _profiles: { state: true },
+    _page: { state: true },
   };
 
   declare hass: HomeAssistant;
@@ -67,6 +72,10 @@ export class EasyAvControlPanel extends LitElement {
   declare _sources: Sources;
   declare _soundModes: Sources;
   declare _adding: boolean;
+  /** Every profile, for the Profiles page and the device pages' profile picker */
+  declare _profiles: ProfileView[];
+  /** Rooms (the selected one) or the Profiles page */
+  declare _page: "room" | "profiles";
 
   private _entryId?: string;
   private _revision?: string;
@@ -80,6 +89,14 @@ export class EasyAvControlPanel extends LitElement {
     this._sources = {};
     this._soundModes = {};
     this._adding = false;
+    this._profiles = [];
+    this._page = "room";
+  }
+
+  private async _loadProfiles(): Promise<void> {
+    this._profiles = await this.hass
+      .callWS<ProfileView[]>({ type: "easy_av_control/profiles/list" })
+      .catch(() => [] as ProfileView[]);
   }
 
   private _t(key: string, params?: Record<string, string>): string {
@@ -102,6 +119,7 @@ export class EasyAvControlPanel extends LitElement {
       if (!this._selected || !(this._selected in result.rooms)) {
         this._selected = Object.keys(result.rooms)[0];
       }
+      void this._loadProfiles();
       // Remembered source and sound mode lists for the pickers; the panel works without them
       [this._sources, this._soundModes] = await Promise.all(
         ["source_list", "sound_mode_list"].map((attribute) =>
@@ -242,6 +260,7 @@ export class EasyAvControlPanel extends LitElement {
         this._rooms = rooms;
       }
       this._banner = { kind: "saved" };
+      void this._loadProfiles();
     } catch (err) {
       const error = err as { code?: string; message?: string };
       this._banner =
@@ -291,18 +310,31 @@ export class EasyAvControlPanel extends LitElement {
         <div class="nav-title">${this._t("rooms")}</div>
         ${rooms.map(
           ([id, room]) => html`<button
-            class="room ${id === selected ? "active" : ""}"
-            @click=${() => (this._selected = id)}
+            class="room ${this._page === "room" && id === selected ? "active" : ""}"
+            @click=${() => {
+              this._selected = id;
+              this._page = "room";
+            }}
           >
             ${room.name ?? id}
           </button>`,
         )}
         ${this._renderAddRoom()}
+        <div class="nav-title library">${this._t("profiles")}</div>
+        <button class="room ${this._page === "profiles" ? "active" : ""}" @click=${() => (this._page = "profiles")}>
+          <ha-icon icon="mdi:package-variant-closed"></ha-icon> ${this._t("profiles")}
+        </button>
       </nav>
       <main>
         <easy-av-control-guide .language=${this.hass.language}></easy-av-control-guide>
         ${this._renderBanner()}
-        ${selected
+        ${this._page === "profiles"
+          ? html`<easy-av-control-profiles
+              .hass=${this.hass}
+              .profiles=${this._profiles}
+              @profiles-changed=${() => this._loadProfiles()}
+            ></easy-av-control-profiles>`
+          : selected
           ? html`<easy-av-control-room-editor
                 .hass=${this.hass}
                 .room=${this._rooms[selected]}
@@ -310,10 +342,15 @@ export class EasyAvControlPanel extends LitElement {
                 .sources=${this._sources}
                 .soundModes=${this._soundModes}
                 .saved=${(JSON.parse(this._original || "{}") as Rooms)[selected]}
+                .profiles=${this._profiles}
                 @room-changed=${(ev: CustomEvent<{ room: Room }>) => this._roomChanged(selected, ev.detail.room)}
                 @delete-room=${() => this._deleteRoom(selected)}
               ></easy-av-control-room-editor>`
           : html`<div class="empty">${this._t("no_rooms")}</div>`}
+        <div class="ltek-links">
+          <a class="ltek-star" href=${REPO} target="_blank" rel="noopener">${this._t("star")}</a>
+          <a class="ltek-issue" href="${REPO}/issues" target="_blank" rel="noopener">${this._t("report")}</a>
+        </div>
       </main>
     </div>`;
   }
@@ -351,7 +388,10 @@ export class EasyAvControlPanel extends LitElement {
     }
   }
 
-  static styles = css`
+  static styles = [
+    ltekTokens,
+    ltekChrome,
+    css`
     :host {
       display: block;
       min-height: 100vh;
@@ -526,7 +566,41 @@ export class EasyAvControlPanel extends LitElement {
         padding: 6px 12px;
       }
     }
-  `;
+    /* Design guide */
+    .nav-title {
+      color: var(--ltek-c-muted);
+      font-size: var(--ltek-fs-small);
+      font-weight: var(--ltek-fw-semibold);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .nav-title.library {
+      margin-top: var(--ltek-sp-6);
+    }
+    button.room {
+      display: flex;
+      align-items: center;
+      gap: var(--ltek-sp-2);
+      border-radius: var(--ltek-r-ctrl);
+      background: var(--ltek-c-surface-raised);
+      border: 1px solid var(--ltek-c-border-soft);
+      font-size: var(--ltek-fs-label);
+    }
+    button.room.active {
+      background: var(--ltek-c-accent-fade);
+      border-color: var(--ltek-c-accent);
+      color: var(--ltek-c-text);
+    }
+    button.room.add {
+      border: 1px dashed var(--ltek-c-accent);
+      color: var(--ltek-c-accent);
+      background: transparent;
+    }
+    .banner {
+      border-radius: var(--ltek-r-md);
+    }
+  `,
+  ];
 }
 
 if (!customElements.get("easy-av-control-panel")) {

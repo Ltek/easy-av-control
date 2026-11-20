@@ -45,7 +45,23 @@ from .const import (
 )
 from .control import action_names
 from .coordinator import can_switch, power_service, power_switches, step_service
+from .device_state import effective_source, wait_mode
 from .model import CONF_DELAY_AFTER
+from .profile_library import profiles_of
+
+
+def _status(hass: HomeAssistant, device: dict[str, Any]):
+    """The device's state source and wait modes, as the engine uses them."""
+    source = effective_source(hass, profiles_of(hass), device)
+    return source, wait_mode(device, source, on=True), wait_mode(device, source, on=False)
+
+
+def _off_delay(hass: HomeAssistant, device: dict[str, Any]) -> tuple[float, float]:
+    """Before the outlet is cut: (fixed time, the longest status wait). Status: no fixed time."""
+    source, _, mode = _status(hass, device)
+    if source is None or mode == "time":
+        return device[CONF_DELAY_AFTER_OFF], 0.0
+    return (0.0 if mode == "status" else device[CONF_DELAY_AFTER_OFF]), source.timeout_off
 
 
 class _Clock:
@@ -155,6 +171,7 @@ def plan_start(
     needed = power_switches(devices, new_devices)
     unused = [d for d in reversed(old_devices) if d not in new_devices]
     cooldown: dict[str, float] = {}
+    status_wait: dict[str, float] = {}
     for device_id in unused:
         device = devices[device_id]
         rows.append(
@@ -163,7 +180,9 @@ def plan_start(
             )
         )
         if switch := device.get(CONF_POWER_SWITCH):
-            cooldown[switch] = max(cooldown.get(switch, 0), device[CONF_DELAY_AFTER_OFF])
+            delay, status = _off_delay(hass, device)
+            cooldown[switch] = max(cooldown.get(switch, 0), delay)
+            status_wait[switch] = max(status_wait.get(switch, 0.0), status)
     cuts = [(s, delay) for s, delay in cooldown.items() if s not in needed]
     for switch in cooldown:
         if switch in needed:
@@ -221,7 +240,21 @@ def plan_start(
             rows.append(_ready_row(entity_id, ready, clock.at, device=device_id, reload=reload))
             clock.wait_up_to(ready[CONF_TIMEOUT])
         rows.append(_switch_row(hass, "turn_on", device_id, entity_id, clock.at, condition="if_off"))
-        if device[CONF_DELAY_AFTER_ON]:
+        source, mode_on, _ = _status(hass, device)
+        if source is not None and mode_on != "time":
+            rows.append(
+                {
+                    "kind": "status",
+                    "at": clock.at,
+                    "device": device_id,
+                    "entity_id": source.entity_id,
+                    "target": "on",
+                    "timeout": source.timeout_on,
+                    "debounce": source.debounce,
+                }
+            )
+            clock.wait_up_to(source.timeout_on)
+        if device[CONF_DELAY_AFTER_ON] and mode_on != "status":
             rows.append(
                 {
                     "kind": "wait",
@@ -245,7 +278,8 @@ def plan_start(
     for switch, delay in cuts:
         row: dict[str, Any] = {
             "kind": "outlets_off",
-            "at": [delay, delay],
+            "at": [delay, delay + status_wait.get(switch, 0.0)],
+            **({"after_status": True} if status_wait.get(switch) else {}),
             "action": "homeassistant.turn_off",
             "entities": [switch],
             "background": True,
@@ -332,6 +366,7 @@ def plan_stop(
         rows.append(hook)
 
     cooldown: dict[str, float] = {}
+    status_wait: dict[str, float] = {}
     for device_id in reversed(device_ids):
         device = devices[device_id]
         rows.append(
@@ -342,14 +377,16 @@ def plan_stop(
                 device[CONF_ENTITY_ID],
                 clock.at,
                 condition="if_on",
-                cooldown=device[CONF_DELAY_AFTER_OFF],
+                cooldown=_off_delay(hass, device)[0],
             )
         )
         if switch := device.get(CONF_POWER_SWITCH):
-            cooldown[switch] = max(cooldown.get(switch, 0.0), device[CONF_DELAY_AFTER_OFF])
+            delay, status = _off_delay(hass, device)
+            cooldown[switch] = max(cooldown.get(switch, 0.0), delay)
+            status_wait[switch] = max(status_wait.get(switch, 0.0), status)
 
     switches = list(reversed(power_switches(devices, device_ids)))
-    now = [s for s in switches if cooldown.get(s, 0) <= 0]
+    now = [s for s in switches if cooldown.get(s, 0) <= 0 and not status_wait.get(s)]
     if now:
         row: dict[str, Any] = {
             "kind": "outlets_off",
@@ -368,10 +405,11 @@ def plan_stop(
     for switch in switches:
         if switch in now:
             continue
-        delay = cooldown[switch]
+        delay = cooldown.get(switch, 0.0)
         row = {
             "kind": "outlets_off",
-            "at": [delay, delay],
+            "at": [delay, delay + status_wait.get(switch, 0.0)],
+            **({"after_status": True} if status_wait.get(switch) else {}),
             "action": "homeassistant.turn_off",
             "entities": [switch],
             "background": True,

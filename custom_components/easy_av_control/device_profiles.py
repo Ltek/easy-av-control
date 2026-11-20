@@ -21,6 +21,7 @@ This module only reads profiles and the registries; it changes nothing (phase 1 
 from __future__ import annotations
 
 from collections.abc import Iterable
+import copy
 from dataclasses import dataclass, field
 import logging
 from pathlib import Path
@@ -140,6 +141,8 @@ class Profile:
 
     data: dict[str, Any]
     source: str = "builtin"
+    # As written (no defaults filled in): what the panel shows, exports and stores
+    raw: dict[str, Any] = field(default_factory=dict, compare=False)
 
     @property
     def id(self) -> str:
@@ -184,7 +187,7 @@ class Profile:
 
 def validate_profile(data: dict[str, Any], source: str = "builtin") -> Profile:
     """Validate a profile; raises vol.Invalid with what is wrong."""
-    return Profile(PROFILE_SCHEMA(data), source)
+    return Profile(PROFILE_SCHEMA(data), source, copy.deepcopy(data))
 
 
 def load_profiles(directory: Path = PROFILES_DIR) -> dict[str, Profile]:

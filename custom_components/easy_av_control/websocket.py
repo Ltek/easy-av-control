@@ -38,8 +38,11 @@ from .const import (
 )
 from .control import activity_list, describe_command, remote_view, route_summary
 from .coordinator import EasyAVControlCoordinator, related_setting_entities
+from .device_profiles import ROLES, best_for_role, physical_devices, resolve
+from .device_state import effective_source, wait_mode
 from .flow import plan_start, plan_stop
 from .model import async_validate_config, find_missing_entities
+from .profile_library import async_get_library, profile_for_device
 
 
 def _coordinators(hass: HomeAssistant) -> list[EasyAVControlCoordinator]:
@@ -72,6 +75,13 @@ def async_register(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_config_related)
     websocket_api.async_register_command(hass, ws_config_flow)
     websocket_api.async_register_command(hass, ws_config_remote)
+    websocket_api.async_register_command(hass, ws_config_detect)
+    websocket_api.async_register_command(hass, ws_profiles_list)
+    websocket_api.async_register_command(hass, ws_profiles_save)
+    websocket_api.async_register_command(hass, ws_profiles_delete)
+    websocket_api.async_register_command(hass, ws_profiles_duplicate)
+    websocket_api.async_register_command(hass, ws_profiles_export)
+    websocket_api.async_register_command(hass, ws_profiles_import)
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/control/rooms"})
@@ -439,3 +449,177 @@ async def ws_config_remote(
         msg["id"],
         {"error": None, "view": view, "targets": targets, "routes": route_summary(room, activity)},
     )
+
+
+# ------------------------------------------------------------------------------------------- profiles
+
+
+def _invalid(err: vol.Invalid) -> dict[str, Any]:
+    return {"path": [str(p) for p in err.path], "message": err.msg}
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/config/detect",
+        vol.Required("entity_id"): str,
+        vol.Optional("device", default=dict): dict,
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_config_detect(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """What the panel's Detected box shows for a device entity.
+
+    The profile it uses, what that profile finds on this Home Assistant, the device's state now, and the other
+    integrations covering the same physical device with the one that does each job. ``device`` is the device
+    as being edited (its ``profile`` or ``state_source``), so the box follows unsaved changes.
+    """
+    library = await async_get_library(hass)
+    entity_id: str = msg["entity_id"]
+    device = {**msg["device"], "entity_id": entity_id}
+    profile = profile_for_device(hass, library.profiles, device)
+    result: dict[str, Any] = {"profile": None, "found": None, "state": None, "siblings": [], "roles": {}}
+    if profile is not None:
+        found = resolve(hass, profile, entity_id)
+        result["profile"] = library.view(profile)
+        result["found"] = {
+            "indicator": found.indicator_entity,
+            "attribute": found.indicator_attribute,
+            "remote_entity": found.remote_entity,
+            "power_switch": found.power_switch,
+            "settings": found.settings,
+            "picture": found.picture_entity,
+        }
+    try:
+        source = effective_source(hass, library.profiles, device)
+    except vol.Invalid:
+        source = None
+    if source is not None:
+        group, value = source.current(hass)
+        result["state"] = {
+            "entity_id": source.entity_id,
+            "group": group,
+            "value": value,
+            "debounce": source.debounce,
+            "timeout_on": source.timeout_on,
+            "timeout_off": source.timeout_off,
+            "wait_on": wait_mode(device, source, on=True),
+            "wait_off": wait_mode(device, source, on=False),
+        }
+    group_of = next(
+        (g for g in physical_devices(hass) if entity_id in {e for ids in g.entities.values() for e in ids}), None
+    )
+    if group_of is not None and len(group_of.integrations) > 1:
+        result["siblings"] = [
+            {"integration": i, "entities": group_of.entities[i]} for i in group_of.integrations
+        ]
+        for role in ROLES:
+            best = best_for_role(library.profiles, group_of, role)
+            result["roles"][role] = best[0] if best else None
+    connection.send_result(msg["id"], result)
+
+
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/profiles/list"})
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_profiles_list(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Every profile, built in first, then the user's own; and which devices use each."""
+    library = await async_get_library(hass)
+    used: dict[str, list[str]] = {}
+    for coordinator in _coordinators(hass):
+        for room_id, room in coordinator.rooms.items():
+            for device_id, device in room.get("devices", {}).items():
+                if (profile := profile_for_device(hass, library.profiles, device)) is not None:
+                    used.setdefault(profile.id, []).append(f"{room.get(CONF_NAME, room_id)}: {device_id}")
+    profiles = sorted(library.profiles.values(), key=lambda p: (p.source != "builtin", p.generic, p.name.lower()))
+    connection.send_result(
+        msg["id"], [{**library.view(p), "used_by": used.get(p.id, [])} for p in profiles]
+    )
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/profiles/save",
+        vol.Required("profile"): dict,
+        vol.Optional("previous_id"): vol.Any(None, str),
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_profiles_save(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    library = await async_get_library(hass)
+    try:
+        profile = await library.async_save(msg["profile"], msg.get("previous_id"))
+    except vol.Invalid as err:
+        connection.send_result(msg["id"], {"error": _invalid(err)})
+        return
+    connection.send_result(msg["id"], {"error": None, "profile": library.view(profile)})
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): f"{DOMAIN}/profiles/delete", vol.Required("profile_id"): str}
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_profiles_delete(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    library = await async_get_library(hass)
+    try:
+        await library.async_delete(msg["profile_id"])
+    except vol.Invalid as err:
+        connection.send_result(msg["id"], {"error": _invalid(err)})
+        return
+    connection.send_result(msg["id"], {"error": None})
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): f"{DOMAIN}/profiles/duplicate", vol.Required("profile_id"): str}
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_profiles_duplicate(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """A copy of a profile under a free id, not saved: the panel opens it in the editor."""
+    library = await async_get_library(hass)
+    if msg["profile_id"] not in library.profiles:
+        connection.send_error(msg["id"], "not_found", f"No profile {msg['profile_id']}")
+        return
+    connection.send_result(msg["id"], library.duplicate(msg["profile_id"]))
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): f"{DOMAIN}/profiles/export", vol.Required("ids"): [str]}
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_profiles_export(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    library = await async_get_library(hass)
+    connection.send_result(msg["id"], library.export(msg["ids"]))
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): f"{DOMAIN}/profiles/import", vol.Required("export"): dict}
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_profiles_import(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Add the profiles of an export; never overwrites (a taken id gets a new one)."""
+    library = await async_get_library(hass)
+    try:
+        result = await library.async_import(msg["export"])
+    except vol.Invalid as err:
+        connection.send_result(msg["id"], {"error": _invalid(err)})
+        return
+    connection.send_result(msg["id"], {"error": None, **result})
