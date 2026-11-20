@@ -1,0 +1,24 @@
+# Lumagen Radiance Pro, integration Ltek/lumagen (domain lumagen).
+# The power switch is optimistic (reads "on" as soon as it's pressed). Every sensor stays unavailable until the
+# unit reports power active, so "on" = the input video status sensor is available.
+id: lumagen
+name: Lumagen Radiance Pro
+integration: lumagen
+device_entity: {domain: switch, translation_key: power}
+indicator:
+  entity: {domain: sensor, translation_key: input_video_status}
+  available_is_on: true
+remote: {domain: remote}
+remote_keys: {back: exit}
+settings:
+  - {domain: select, translation_key: input}
+picture:
+  entity: {domain: sensor, translation_key: input_video_status}
+  ok: [Active Video, Test Pattern]
+  fail: [No Source]
+  debounce: 5
+  timeout: 30
+timeouts: {"on": 90, "off": 30}
+debounce: 2
+order: early
+roles: {power: 1, navigation: 1, turn_off: 1}

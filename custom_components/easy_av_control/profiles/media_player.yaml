@@ -1,0 +1,10 @@
+# Any media player without a profile of its own: today's behaviour (on / off from its state, no waits).
+id: media_player
+name: Media player (generic)
+integration: "*"
+device_entity: {domain: media_player}
+indicator:
+  "on": ["on", idle, playing, paused, buffering]
+  "off": ["off", standby]
+order: middle
+roles: {power: 9, now_playing: 9, turn_off: 9}

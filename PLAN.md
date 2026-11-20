@@ -1,6 +1,8 @@
 # Plan: automatic setup and device states (Easy AV Control)
 
-Status: draft, 2026-11-20. Updated with your answers: wait modes, Detect integrations any time, priority order, JVC
+Status: phase 1 built (2026-11-20.2); phases 2 to 5 to do.
+
+Originally drafted 2026-11-20. Updated with your answers: wait modes, Detect integrations any time, priority order, JVC
 confirmed, Lumagen reviewed, shareable profiles, profile creation, debounce and failure handling, adding to the power-on order,
 the design guide, and the roadmap. Nothing here is built yet.
 
@@ -62,12 +64,14 @@ Your order, **PiPup, ADB, Cast, Android TV Remote**, is right for the first two.
 
 | Integration | How fast it reports | Power on/off | Navigation keys | What's playing |
 |---|---|---|---|---|
-| **PiPup** (app 0.24+) | **push** (webhook), near-instant | screen on / off; reads off when unreachable | yes | yes, with app 0.32+ media session |
+| **PiPup** (app 0.24+) | **push** (webhook), near-instant | screen on / off; reads off when unreachable | **home and back only** (its `send_key` has no arrows or OK) | yes, with app 0.32+ media session |
 | **ADB** | **polls every 10 s** (HA's media player default) | reliable, incl. `standby` | yes | app and playback state |
 | **Android TV Remote** | push | reliable on / off | yes | no |
 | **Cast** | event-based, but about the Cast app | **not** the TV's power: idle can mean on or off | no | only for Cast sessions |
 
-- PiPup first: fastest and most features. ADB's 10-second poll is the delay you've noticed.
+- PiPup first for power and what's playing: fastest. ADB's 10-second poll is the delay you've noticed.
+- **Navigation keys come from ADB** (then Android TV Remote): PiPup's `send_key` only has media keys, home and
+  back. Found while building phase 1.
 - ADB second as the fallback (and the only one with a deep-sleep-safe Turn off today, per Plex Center).
 - **Android TV Remote above Cast:** it reports the TV's real power and has navigation keys. Cast reports neither,
   so it should only ever be used for "what's playing". It's a moot point once you remove Android TV Remote.

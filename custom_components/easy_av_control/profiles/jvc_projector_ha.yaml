@@ -1,0 +1,21 @@
+# JVC D-ILA projector, integration Ltek/jvc-projector (domain jvc_projector_ha).
+# Tested on: JVC projector at home (2026-11-20). The Power State sensor is exact.
+id: jvc_projector_ha
+name: JVC projector
+integration: jvc_projector_ha
+device_entity: {domain: remote}
+indicator:
+  entity: {domain: sensor, translation_key: jvc_power_state}
+  "on": ["on"]
+  starting: [warming]
+  stopping: [cooling]
+  "off": [standby]
+  error: [error]
+remote: {domain: remote}
+settings:
+  - {domain: select, translation_key: jvc_input_select}
+  - {domain: select, translation_key: jvc_picture_mode}
+timeouts: {"on": 120, "off": 300}
+debounce: 2
+order: early
+roles: {power: 1, navigation: 1, turn_off: 1}

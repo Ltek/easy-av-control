@@ -1,0 +1,22 @@
+# Android / Google TV, Home Assistant's androidtv_remote integration (push).
+id: androidtv_remote
+name: Android TV Remote
+integration: androidtv_remote
+device_entity: {domain: media_player}
+indicator:
+  "on": ["on"]
+  "off": ["off"]
+remote: {domain: remote}
+remote_keys:
+  up: DPAD_UP
+  down: DPAD_DOWN
+  left: DPAD_LEFT
+  right: DPAD_RIGHT
+  ok: DPAD_CENTER
+  back: BACK
+  home: HOME
+  menu: MENU
+timeouts: {"on": 60, "off": 30}
+debounce: 2
+order: late
+roles: {power: 3, navigation: 2, turn_off: 2}

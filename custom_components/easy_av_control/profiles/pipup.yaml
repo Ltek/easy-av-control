@@ -1,0 +1,16 @@
+# Android / Google TV with the PiPup app, integration mhoogenbosch/ha-pipup (domain pipup).
+# App 0.24+ pushes its state, so it reports fastest. send_key has media keys plus home and back, no arrows or OK:
+# navigation comes from ADB or Android TV Remote. Its turn off is a deep sleep on some TVs, so it isn't used for
+# turning off.
+id: pipup
+name: PiPup (Android / Google TV)
+integration: pipup
+device_entity: {domain: media_player}
+indicator:
+  entity: {domain: binary_sensor, translation_key: screen}
+  "on": ["on"]
+  "off": ["off"]
+timeouts: {"on": 60, "off": 30}
+debounce: 2
+order: late
+roles: {power: 1, now_playing: 1}

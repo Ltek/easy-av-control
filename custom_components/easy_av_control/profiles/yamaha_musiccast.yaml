@@ -1,0 +1,17 @@
+# Yamaha MusicCast receiver, Home Assistant's yamaha_musiccast integration (push). One media player per zone, all
+# on the same device; the zone you pick is its own indicator. No warm-up state.
+id: yamaha_musiccast
+name: Yamaha MusicCast
+integration: yamaha_musiccast
+device_entity: {domain: media_player, translation_key: zone}
+indicator:
+  "on": ["on", idle, playing, paused]
+  "off": ["off"]
+settings:
+  - {domain: select, translation_key: zone_tone_control_mode}
+  - {domain: select, translation_key: zone_sleep}
+  - {domain: select, translation_key: zone_surr_decoder_type}
+timeouts: {"on": 30, "off": 15}
+debounce: 1
+order: middle
+roles: {power: 1, now_playing: 2, turn_off: 1}

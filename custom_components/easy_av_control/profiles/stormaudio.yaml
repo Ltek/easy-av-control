@@ -1,0 +1,18 @@
+# StormAudio ISP processor, integration Ltek/StormAudio (domain stormaudio).
+# The media player reads "on" while the processor is still initializing: the detailed_state attribute is the
+# real state.
+id: stormaudio
+name: StormAudio processor
+integration: stormaudio
+device_entity: {domain: media_player}
+indicator:
+  attribute: detailed_state
+  "on": ["on"]
+  starting: [initializing]
+  stopping: [shutting down]
+  "off": ["off"]
+power_switch: {domain: switch, unique_id_suffix: _power}
+timeouts: {"on": 90, "off": 60}
+debounce: 2
+order: middle
+roles: {power: 1, now_playing: 2, turn_off: 1}

@@ -1,0 +1,8 @@
+# Google Cast. Its state is the Cast app's, not the TV's power ("idle" can mean on or off), so it's only used for
+# what's playing.
+id: cast
+name: Google Cast
+integration: cast
+device_entity: {domain: media_player}
+order: late
+roles: {now_playing: 3}

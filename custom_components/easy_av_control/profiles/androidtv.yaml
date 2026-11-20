@@ -1,0 +1,14 @@
+# Android / Google TV over ADB, Home Assistant's androidtv integration. Polls every 10 s.
+id: androidtv
+name: Android TV (ADB)
+integration: androidtv
+device_entity: {domain: media_player}
+indicator:
+  "on": ["on", idle, playing, paused, buffering]
+  "off": ["off", standby]
+remote: {domain: remote}
+remote_keys: {up: UP, down: DOWN, left: LEFT, right: RIGHT, ok: CENTER, back: BACK, home: HOME, menu: MENU}
+timeouts: {"on": 60, "off": 30}
+debounce: 2
+order: late
+roles: {power: 2, navigation: 1, now_playing: 2, turn_off: 1}
