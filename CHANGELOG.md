@@ -1,11 +1,16 @@
 # Changelog
 
+## v2026.11.21.14
+
+**Changed**
+- The sidebar chip in the left menu is labelled **Editor in Sidebar**.
+
 ## v2026.11.21.13
 
 **Added**
 - **Flow: ✎ on every row** opens the panel the row comes from: a device's Device, Device state, Power Outlet,
   Waiting times or Connection check, or the activity's Checks, Actions after start or Advanced.
-- **In sidebar** chip in the left menu: shows or hides Easy AV Control in Home Assistant's sidebar. Hidden, the
+- **Editor in Sidebar** chip in the left menu: shows or hides Easy AV Control in Home Assistant's sidebar. Hidden, the
   panel stays at `/easy-av-control` and behind the integration's Configure.
 
 **Changed**
