@@ -1,5 +1,24 @@
 # Changelog
 
+## v2026.11.21.15
+
+**Fixed**
+- **The card showed "Pick a room in the card settings"** in Home Assistant's card editor and on a dashboard in
+  edit mode. Home Assistant sets `preview` on every card it shows there, and the card took that for its own demo
+  mode. The panel's Remote control preview now uses its own property; both draw with the same card.
+
+**Added**
+- **Live Flow on the card.** A Flow chip under the status shows the same Flow as the panel, for the running
+  activity (or the one the power button starts). It opens by itself while the room starts or stops and marks
+  each row: ✓ done, spinning while it runs, dimmed still to come. A Details chip shows or hides entities,
+  actions and notes. Card options: `show_flow` (default on), `flow_details` (default off).
+- **Device states in the Flow,** in the panel and on the card: each device's number and icons take the theme's
+  colour for its state now (active, starting/stopping, off, error, unavailable), with its own word for it
+  ("now: warming"). Outlets show whether they are on.
+
+**Changed**
+- The card editor's fields use the design guide's style.
+
 ## v2026.11.21.14
 
 **Changed**

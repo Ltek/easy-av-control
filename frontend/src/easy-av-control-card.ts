@@ -9,6 +9,7 @@ import { LitElement, css, html, nothing, type PropertyValues, type TemplateResul
 import { live } from "lit/directives/live.js";
 
 import "./editor";
+import "./panel/flow-view";
 import { commandLabel } from "./labels";
 import { localize } from "./localize";
 import { clock, nowPlaying, type NowPlaying } from "./now-playing";
@@ -77,7 +78,9 @@ const STATE_ICONS: Record<string, string> = {
 export class EasyAvControlRemoteCard extends LitElement {
   static properties = {
     hass: { attribute: false },
-    preview: { attribute: false },
+    demoView: { attribute: false },
+    _flowOpen: { state: true },
+    _flowDetails: { state: true },
     _config: { state: true },
     _view: { state: true },
     _loaded: { state: true },
@@ -90,7 +93,15 @@ export class EasyAvControlRemoteCard extends LitElement {
    * Show this view instead of subscribing (the configuration panel). Buttons
    * send nothing then; they fire "preview-call" with the action they would call.
    */
-  declare preview?: RoomView;
+  declare demoView?: RoomView;
+  /** Opened (true) or closed (false) by hand; undefined follows the room (open while it starts or stops) */
+  declare _flowOpen?: boolean;
+  declare _flowDetails?: boolean;
+  /** The activity running before the current start, for the Flow of a switch */
+  private _from?: string;
+  private _lastActive?: string;
+  /** Set by Home Assistant (true) on a card shown in its editor; the card still shows the real room then */
+  preview?: boolean;
   declare _config?: CardConfig;
   declare _view: RoomView | null;
   declare _loaded: boolean;
@@ -175,9 +186,9 @@ export class EasyAvControlRemoteCard extends LitElement {
   }
 
   protected willUpdate(changed: PropertyValues): void {
-    if (changed.has("preview") && this.preview) {
-      this._config = { type: "custom:easy-av-control-card", room: this.preview.room };
-      this._view = this.preview;
+    if (changed.has("demoView") && this.demoView) {
+      this._config = { type: "custom:easy-av-control-card", room: this.demoView.room };
+      this._view = this.demoView;
       this._loaded = true;
     }
   }
@@ -200,7 +211,7 @@ export class EasyAvControlRemoteCard extends LitElement {
   }
 
   private _subscribe(): void {
-    if (this.preview || !this.hass || !this._config?.room || this._unsubscribe || !this.isConnected) {
+    if (this.demoView || !this.hass || !this._config?.room || this._unsubscribe || !this.isConnected) {
       return;
     }
     const message: Record<string, unknown> = {
@@ -214,6 +225,11 @@ export class EasyAvControlRemoteCard extends LitElement {
       if (this._unsubscribe !== subscription) {
         return; // from a subscription replaced by a newer one (another room)
       }
+      if (view?.state === "starting" && this._view?.state !== "starting") {
+        this._from = this._lastActive && this._lastActive !== view.activity ? this._lastActive : undefined;
+      }
+      if (view?.state === "active" && view.activity) this._lastActive = view.activity;
+      if (view?.state === "idle") this._lastActive = undefined;
       this._view = view;
       this._loaded = true;
       this._subscribeError = undefined;
@@ -262,7 +278,7 @@ export class EasyAvControlRemoteCard extends LitElement {
       return;
     }
     this._haptic();
-    if (this.preview) {
+    if (this.demoView) {
       this.dispatchEvent(new CustomEvent("preview-call", { detail: { service, data } }));
       return;
     }
@@ -353,7 +369,7 @@ export class EasyAvControlRemoteCard extends LitElement {
       </ha-card>`;
     }
     return html`<ha-card>
-      ${this._renderHeader(view)} ${this._renderStatus(view)} ${this._renderNowPlaying()}
+      ${this._renderHeader(view)} ${this._renderStatus(view)} ${this._renderFlow(view)} ${this._renderNowPlaying()}
       ${this._renderActivities(view)}
       ${view.remote ? this._renderRemote(view) : nothing}
     </ha-card>`;
@@ -379,6 +395,38 @@ export class EasyAvControlRemoteCard extends LitElement {
         <ha-icon .icon=${STATE_ICONS[view.state] ?? "mdi:power"}></ha-icon>
       </button>
     </div>`;
+  }
+
+  /** The live Flow: what the room switches, with what is done and what runs now. */
+  private _renderFlow(view: RoomView): TemplateResult | typeof nothing {
+    if (this._config?.show_flow === false || this.demoView) return nothing;
+    const activity = view.activity ?? view.default_activity ?? view.activities[0]?.id;
+    if (!activity) return nothing;
+    const busy = view.state === "starting" || view.state === "stopping";
+    const open = this._flowOpen ?? busy;
+    const details = this._flowDetails ?? this._config?.flow_details === true;
+    return html`<div class="flow-bar">
+        <button class="chip ${open ? "on" : ""}" @click=${() => (this._flowOpen = !open)}>
+          <ha-icon icon="mdi:sitemap-outline"></ha-icon>${this._t("flow.show")}
+        </button>
+        ${open
+          ? html`<button class="chip ${details ? "on" : ""}" @click=${() => (this._flowDetails = !details)}>
+              <ha-icon icon=${details ? "mdi:eye-outline" : "mdi:eye-off-outline"}></ha-icon>${this._t("flow.details")}
+            </button>`
+          : nothing}
+      </div>
+      ${open
+        ? html`<easy-av-control-flow
+            class="live-flow"
+            .hass=${this.hass}
+            .roomId=${view.room}
+            .entryId=${view.entry_id}
+            .activityId=${activity}
+            .from=${view.state === "starting" ? this._from : undefined}
+            .live=${{ state: view.state, current: view.current, activity: view.activity }}
+            .details=${details}
+          ></easy-av-control-flow>`
+        : nothing}`;
   }
 
   private _renderStatus(view: RoomView): TemplateResult | typeof nothing {
@@ -893,6 +941,34 @@ export class EasyAvControlRemoteCard extends LitElement {
   }
 
   static styles = css`
+    .flow-bar {
+      display: flex;
+      gap: 6px;
+      padding: 0 16px 8px;
+    }
+    .flow-bar .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 10px 3px 8px;
+      border-radius: 14px;
+      border: 1px solid var(--divider-color);
+      background: transparent;
+      color: var(--secondary-text-color);
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      --mdc-icon-size: 16px;
+    }
+    .flow-bar .chip.on {
+      border-color: var(--primary-color);
+      color: var(--primary-color);
+    }
+    easy-av-control-flow.live-flow {
+      display: block;
+      padding: 0 12px 12px;
+    }
+
     :host {
       --avs-key-bg: var(--secondary-background-color, #f0f0f0);
       --avs-key-color: var(--primary-text-color, #212121);

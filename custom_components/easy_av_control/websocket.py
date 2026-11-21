@@ -31,6 +31,7 @@ from .const import (
     CONF_ACTIVITIES,
     CONF_AREA_ID,
     CONF_DEFAULT_ACTIVITY,
+    CONF_DEVICES,
     CONF_NAME,
     CONF_ROOMS,
     DOMAIN,
@@ -70,6 +71,8 @@ def async_register(hass: HomeAssistant) -> None:
     """Register the websocket commands."""
     websocket_api.async_register_command(hass, ws_rooms)
     websocket_api.async_register_command(hass, ws_subscribe)
+    websocket_api.async_register_command(hass, ws_control_flow)
+    websocket_api.async_register_command(hass, ws_control_states)
     websocket_api.async_register_command(hass, ws_config_get)
     websocket_api.async_register_command(hass, ws_config_validate)
     websocket_api.async_register_command(hass, ws_config_save)
@@ -144,6 +147,62 @@ def ws_subscribe(
     )
     connection.send_result(msg["id"])
     _send()
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/control/flow",
+        vol.Required(ATTR_ROOM): str,
+        vol.Optional("entry_id"): str,
+        vol.Required(ATTR_ACTIVITY): str,
+        vol.Optional("mode", default="start"): vol.In(["start", "stop"]),
+        vol.Optional("from"): vol.Any(None, str),
+    }
+)
+@callback
+def ws_control_flow(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """The Flow of a saved activity, for the card's live Flow (any user)."""
+    coordinator = find_room(hass, msg[ATTR_ROOM], msg.get("entry_id"))
+    if coordinator is None:
+        connection.send_error(msg["id"], "not_found", "Unknown room")
+        return
+    room_id: str = msg[ATTR_ROOM]
+    room = coordinator.rooms[room_id]
+    activity: str = msg[ATTR_ACTIVITY]
+    previous = msg.get("from")
+    if activity not in room[CONF_ACTIVITIES] or (previous is not None and previous not in room[CONF_ACTIVITIES]):
+        connection.send_result(msg["id"], _UNKNOWN_ACTIVITY)
+        return
+    others: dict[str, Any] = {}
+    for other in _coordinators(hass):
+        others.update(other.rooms)
+    if msg["mode"] == "stop":
+        flow = plan_stop(hass, room_id, room, activity, others)
+    else:
+        flow = plan_start(hass, room_id, room, activity, previous, others)
+    # Names only: the card has no access to the configuration
+    names = {
+        "devices": {key: {"name": coordinator.device_name(device)} for key, device in room[CONF_DEVICES].items()},
+        "activities": {key: {"name": a.get(CONF_NAME) or key} for key, a in room[CONF_ACTIVITIES].items()},
+    }
+    connection.send_result(msg["id"], {"error": None, **flow, "room": names})
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): f"{DOMAIN}/control/states", vol.Required(ATTR_ROOM): str, vol.Optional("entry_id"): str}
+)
+@callback
+def ws_control_states(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Each device of a saved room: what its state means now (the Flow's colours)."""
+    coordinator = find_room(hass, msg[ATTR_ROOM], msg.get("entry_id"))
+    if coordinator is None:
+        connection.send_result(msg["id"], {})
+        return
+    connection.send_result(msg["id"], coordinator.device_states(msg[ATTR_ROOM]))
 
 
 # ----------------------------------------------------------------------

@@ -2,6 +2,7 @@
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 
 import { localize } from "./localize";
+import "./panel/ltek-form";
 import { REPO, ltekChrome, ltekTokens } from "./panel/ltek-styles";
 import type { CardConfig, HomeAssistant, RoomInfo } from "./types";
 
@@ -47,6 +48,8 @@ export class EasyAvControlRemoteCardEditor extends LitElement {
         selector: { select: { mode: "dropdown", options } },
       },
       { name: "name", selector: { text: {} } },
+      { name: "show_flow", selector: { boolean: {} } },
+      { name: "flow_details", selector: { boolean: {} } },
     ];
   }
 
@@ -55,6 +58,7 @@ export class EasyAvControlRemoteCardEditor extends LitElement {
       return nothing;
     }
     const data = {
+      show_flow: true,
       ...this._config,
       room: this._config.entry_id ? `${this._config.entry_id}/${this._config.room}` : this._config.room,
     };
@@ -71,13 +75,13 @@ export class EasyAvControlRemoteCardEditor extends LitElement {
         </summary>
         <div class="ltek-body">
           <p class="ltek-hint">${t("editor.hint")}</p>
-          <ha-form
+          <ltek-form
             .hass=${this.hass}
             .data=${data}
             .schema=${this._schema()}
             .computeLabel=${(s: { name: string }) => t(`editor.${s.name}`)}
             @value-changed=${this._valueChanged}
-          ></ha-form>
+          ></ltek-form>
         </div>
       </details>
       <div class="ltek-links">
@@ -107,6 +111,8 @@ export class EasyAvControlRemoteCardEditor extends LitElement {
     if (!config.name) {
       delete config.name;
     }
+    if (config.show_flow !== false) delete config.show_flow;
+    if (!config.flow_details) delete config.flow_details;
     this.dispatchEvent(
       new CustomEvent("config-changed", { detail: { config }, bubbles: true, composed: true }),
     );

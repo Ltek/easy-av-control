@@ -1,26 +1,24 @@
 /**
  * The flow of an activity: what a start or stop switches, when and how.
  *
- * Computed by the integration (easy_av_control/config/flow) from the room as it
- * is being edited, so it follows every change before it is saved.
+ * In the panel it is computed (easy_av_control/config/flow) from the room as it is being edited, so it
+ * follows every change before it is saved. On the card (``live``) it is the saved room's
+ * (control/flow) and marks what a running start or stop has done and is doing. Both colour each device by
+ * its state now (control/states).
  */
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 
 import type { HomeAssistant } from "../types";
 import type { Room } from "./model";
 import { t } from "./strings";
+import { HEADERS, NESTED, groups, rowStatuses, stateRole, type Live, type Row, type RowStatus } from "./flow-live";
 import { ltekChrome, ltekPanelScale, ltekTokens } from "./ltek-styles";
 
-
-type Row = {
-  kind: string;
-  at: [number, number];
-  [key: string]: unknown;
-};
+type DeviceStates = Record<string, { group: string; value: string | null }>;
 
 type Flow =
   | { error: { path: string[]; message: string } }
-  | { error: null; rows: Row[]; done: [number, number] };
+  | { error: null; rows: Row[]; done: [number, number]; room?: Room };
 
 type Mode = "start" | "stop";
 
@@ -47,8 +45,6 @@ const ICONS: Record<string, string> = {
   step: "mdi:tune-variant",
 };
 
-/** Rows that belong to the device or steps header above them. */
-const NESTED = new Set(["boot", "reload", "ready", "status", "picture", "check", "turn_on", "wait", "already_on", "step", "turn_off"]);
 /** Where each row's ✎ goes: the device's panel (key of its title text), for rows under a device. */
 const DEVICE_PANELS: Record<string, string> = {
   device: "section_device",
@@ -72,8 +68,6 @@ const ACTIVITY_PANELS: Record<string, string> = {
   already_on: "section_activity_devices",
 };
 
-/** Rows that start a group: a device, the checks, the steps. */
-const HEADERS = new Set(["device", "checks", "steps"]);
 
 export class EasyAvControlFlow extends LitElement {
   static properties = {
@@ -85,6 +79,11 @@ export class EasyAvControlFlow extends LitElement {
     _from: { state: true },
     _flow: { state: true },
     _failed: { state: true },
+    entryId: { attribute: false },
+    live: { attribute: false },
+    from: { attribute: false },
+    details: { type: Boolean },
+    _states: { state: true },
   };
 
   declare hass: HomeAssistant;
@@ -96,6 +95,18 @@ export class EasyAvControlFlow extends LitElement {
   declare _from?: string;
   declare _flow?: Flow;
   declare _failed?: string;
+  declare entryId?: string;
+  /** On the card: the room's run state; the Flow follows it */
+  declare live?: Live & { activity?: string | null };
+  /** On the card: the activity a start switches from */
+  declare from?: string;
+  /** Entities, actions and notes; off shows only what happens */
+  declare details: boolean;
+  declare _states: DeviceStates;
+  /** The furthest row this run has reached */
+  private _reached = -1;
+  private _statesTimer?: number;
+  private _watched = "";
 
   private _timer?: number;
   private _request = 0;
@@ -103,21 +114,33 @@ export class EasyAvControlFlow extends LitElement {
   constructor() {
     super();
     this._mode = "start";
+    this.details = true;
+    this._states = {};
   }
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
     window.clearTimeout(this._timer);
+    window.clearTimeout(this._statesTimer);
   }
 
   protected willUpdate(changed: Map<string, unknown>): void {
     if (changed.has("activityId") && changed.get("activityId") !== undefined) {
       this._from = undefined;
     }
-    if (this._from !== undefined && !this.room.activities?.[this._from]) {
+    if (this._from !== undefined && !this.room?.activities?.[this._from]) {
       this._from = undefined;
     }
-    if (["room", "roomId", "activityId", "_mode", "_from"].some((key) => changed.has(key))) {
+    if (this.live) {
+      const mode: Mode = this.live.state === "stopping" ? "stop" : "start";
+      const previous = changed.get("live") as this["live"];
+      if (mode !== this._mode) this._mode = mode;
+      if (!previous || previous.state !== this.live.state || previous.activity !== this.live.activity) {
+        if (this.live.state === "starting" || this.live.state === "stopping") this._reached = -1;
+        changed.set("_mode", undefined);
+      }
+    }
+    if (["room", "roomId", "activityId", "_mode", "_from", "from"].some((key) => changed.has(key))) {
       window.clearTimeout(this._timer);
       // Typing in the forms changes the room often; switching the view does not
       const first = this._flow === undefined && this._failed === undefined;
@@ -128,15 +151,18 @@ export class EasyAvControlFlow extends LitElement {
 
   private async _load(): Promise<void> {
     const request = ++this._request;
+    const from = this.live ? this.from : this._from;
     try {
       const flow = await this.hass.callWS<Flow>({
-        type: "easy_av_control/config/flow",
+        ...(this.live
+          ? { type: "easy_av_control/control/flow", ...(this.entryId ? { entry_id: this.entryId } : {}) }
+          : { type: "easy_av_control/config/flow", config: this.room }),
         room: this.roomId,
-        config: this.room,
         activity: this.activityId,
         mode: this._mode,
-        ...(this._mode === "start" && this._from ? { from: this._from } : {}),
+        ...(this._mode === "start" && from ? { from } : {}),
       });
+      this._loadStates();
       if (request === this._request) {
         this._flow = flow;
         this._failed = undefined;
@@ -146,6 +172,52 @@ export class EasyAvControlFlow extends LitElement {
         this._failed = (err as { message?: string }).message ?? String(err);
       }
     }
+  }
+
+  /** Each device's state now; asked again when one of the Flow's entities changes. */
+  private async _loadStates(): Promise<void> {
+    try {
+      this._states = await this.hass.callWS<DeviceStates>({
+        type: "easy_av_control/control/states",
+        room: this.roomId,
+        ...(this.entryId ? { entry_id: this.entryId } : {}),
+      });
+    } catch {
+      /* colours are a nicety */
+    }
+  }
+
+  protected updated(changed: Map<string, unknown>): void {
+    if (!changed.has("hass") || !this.hass || !this._flow || this._flow.error) return;
+    const ids = new Set<string>();
+    for (const row of this._flow.rows) {
+      if (typeof row.entity_id === "string") ids.add(row.entity_id);
+      for (const e of (row.entities as string[] | undefined) ?? []) ids.add(e);
+    }
+    for (const device of Object.values(this._room.devices ?? {})) if (device.entity_id) ids.add(device.entity_id);
+    const key = [...ids].map((id) => `${id}=${this.hass.states[id]?.state}`).join("|");
+    if (key !== this._watched) {
+      this._watched = key;
+      window.clearTimeout(this._statesTimer);
+      this._statesTimer = window.setTimeout(() => this._loadStates(), 300);
+    }
+  }
+
+  /** The room's names: the edited room in the panel, the names control/flow sends on the card. */
+  private get _room(): Room {
+    return this.room ?? (this._flow && !this._flow.error ? this._flow.room : undefined) ?? ({} as Room);
+  }
+
+  /** The colour of a row's icon: its device's state, or for outlets whether they are on. */
+  private _role(row: Row, header?: Row): string | undefined {
+    const device = (row.device ?? header?.device) as string | undefined;
+    if (device && this._states[device]) return stateRole(this._states[device].group);
+    const entities = (row.entities as string[] | undefined) ?? [];
+    if (entities.length && ["outlets_on", "outlets_off", "outlet_keep"].includes(row.kind)) {
+      const states = entities.map((e) => this.hass.states[e]?.state);
+      return states.every((v) => v === "on") ? "on" : states.every((v) => v === "off") ? "off" : "unknown";
+    }
+    return undefined;
   }
 
   private _t(key: string, params?: Record<string, string>): string {
@@ -163,13 +235,13 @@ export class EasyAvControlFlow extends LitElement {
 
   private _device(deviceId: unknown): string {
     const id = String(deviceId ?? "");
-    const device = this.room.devices?.[id];
+    const device = this._room.devices?.[id];
     return device?.name || (device?.entity_id ? this._entity(device.entity_id) : "") || id;
   }
 
   private _activity(activityId: unknown): string {
     const id = String(activityId ?? "");
-    return this.room.activities?.[id]?.name || id;
+    return this._room.activities?.[id]?.name || id;
   }
 
   private _list(entities: unknown): string {
@@ -330,13 +402,23 @@ export class EasyAvControlFlow extends LitElement {
     return undefined;
   }
 
-  private _renderRow(row: Row, nested: boolean, showTime: boolean, group?: Row): TemplateResult {
-    const target = this._target(row, group);
-    const notes = this._notes(row);
-    const call = this._call(row);
+  private _renderRow(row: Row, nested: boolean, showTime: boolean, group?: Row, status?: RowStatus): TemplateResult {
+    const target = this.live ? undefined : this._target(row, group);
+    const notes = this.details ? this._notes(row) : [];
+    const call = this.details ? this._call(row) : undefined;
     const header = HEADERS.has(row.kind);
-    return html`<li class=${[nested ? "nested" : "", header ? "header" : "", row.kind].join(" ")}>
-      <span class="time">${showTime ? this._time(row.at) : ""}</span>
+    const role = this._role(row, group);
+    const classes = [nested ? "nested" : "", header ? "header" : "", row.kind, status ? `s-${status}` : "", role ? `r-${role}` : ""];
+    return html`<li class=${classes.join(" ")}>
+      <span class="time"
+        >${status === "done"
+          ? html`<ha-icon class="mark" icon="mdi:check"></ha-icon>`
+          : status === "active"
+            ? html`<ha-icon class="mark spin" icon="mdi:loading"></ha-icon>`
+            : showTime
+              ? this._time(row.at)
+              : ""}</span
+      >
       ${header
         ? html`<span class="index">${row.kind === "device" ? row.index : row.kind === "checks" ? "✓" : "≡"}</span>`
         : html`<ha-icon class="icon" .icon=${ICONS[row.kind] ?? "mdi:circle-small"}></ha-icon>`}
@@ -350,7 +432,10 @@ export class EasyAvControlFlow extends LitElement {
               ? this._t("flow.checks")
               : this._text(row)}</span
         >
-        ${row.kind === "device" ? html`<span class="call">${row.entity_id}</span>` : nothing}
+        ${row.kind === "device" && this.details ? html`<span class="call">${row.entity_id}</span>` : nothing}
+        ${row.kind === "device" && row.device && this._states[row.device as string]?.value
+          ? html`<span class="now">${this._t("flow.now", { value: String(this._states[row.device as string].value) })}</span>`
+          : nothing}
         ${call ? html`<span class="call">${call}</span>` : nothing}
         ${notes.length ? html`<span class="notes">${notes.map((n) => html`<span class="note">${n}</span>`)}</span>` : nothing}
       </span>
@@ -363,39 +448,42 @@ export class EasyAvControlFlow extends LitElement {
           >
             <ha-icon icon="mdi:pencil-outline"></ha-icon>
           </button>`
-        : html`<span></span>`}
+        : this.live
+          ? nothing
+          : html`<span></span>`}
     </li>`;
   }
 
   private _renderRows(rows: Row[]): TemplateResult {
-    const foreground = rows.filter((row) => !row.background);
+    const under = groups(rows);
+    let statuses: RowStatus[] | undefined;
+    if (this.live && ["starting", "stopping", "active"].includes(this.live.state)) {
+      statuses = rowStatuses(rows, this.live, this._reached);
+      const active = statuses.lastIndexOf("active");
+      if (active > this._reached && !HEADERS.has(rows[active].kind)) this._reached = active;
+    }
     const background = rows.filter((row) => row.background);
-    let group = false;
     let last = "";
-    let header: Row | undefined;
-    const items = foreground.map((row) => {
-      if (HEADERS.has(row.kind)) {
-        group = true;
-        header = row;
-      } else if (!NESTED.has(row.kind) || row.reason === "unused") {
-        group = false;
-        header = undefined;
-      }
+    const items = rows.flatMap((row, i) => {
+      if (row.background) return [];
       const time = this._time(row.at);
       const show = time !== last || row.kind === "state";
       last = time;
-      return this._renderRow(row, group && !HEADERS.has(row.kind), show, header);
+      return [this._renderRow(row, under[i] !== undefined, show, under[i], statuses?.[i])];
     });
     return html`<ol class="flow">${items}</ol>
       ${background.length
         ? html`<h4>${this._t("flow.background")}</h4>
-            <ol class="flow">${background.map((row) => this._renderRow(row, false, true))}</ol>`
+            <ol class="flow">${background.map((row) => this._renderRow(row, false, true, undefined, statuses?.[rows.indexOf(row)]))}</ol>`
         : nothing}`;
   }
 
   // ------------------------------------------------------------------
 
   protected render(): TemplateResult {
+    if (this.live) {
+      return html`${this._renderBody()}`;
+    }
     const others = Object.entries(this.room.activities ?? {}).filter(([id]) => id !== this.activityId);
     return html`
       <div class="modes" role="tablist">
@@ -457,7 +545,7 @@ export class EasyAvControlFlow extends LitElement {
             seconds: this._seconds(Math.max(0, ...background)),
           });
     return html`${this._renderRows(flow.rows)}
-      <p class="summary">${summary}</p>`;
+      ${this.live && !this.details ? nothing : html`<p class="summary">${summary}</p>`}`;
   }
 
   static styles = [
@@ -565,6 +653,66 @@ export class EasyAvControlFlow extends LitElement {
       gap: 2px;
       min-width: 0;
       overflow-wrap: anywhere;
+    }
+    /* Device states: the theme's colours */
+    li.r-on .icon,
+    li.r-on .index {
+      color: var(--state-icon-active-color, var(--state-active-color, var(--ltek-c-accent)));
+      border-color: currentColor;
+    }
+    li.r-busy .icon,
+    li.r-busy .index {
+      color: var(--warning-color, #ffa600);
+      border-color: currentColor;
+    }
+    li.r-off .icon,
+    li.r-off .index {
+      color: var(--state-icon-color, var(--secondary-text-color));
+      border-color: currentColor;
+    }
+    li.r-error .icon,
+    li.r-error .index {
+      color: var(--error-color, #db4437);
+      border-color: currentColor;
+    }
+    li.r-unavailable .icon,
+    li.r-unavailable .index {
+      color: var(--state-unavailable-color, var(--disabled-text-color, #6f6f6f));
+      border-color: currentColor;
+    }
+    .now {
+      font-size: var(--ltek-fs-small);
+      color: var(--secondary-text-color);
+    }
+    /* Live: done, doing, still to come */
+    li.s-done .what {
+      color: var(--secondary-text-color);
+    }
+    li.s-done.header .what {
+      color: var(--accent-color, var(--ltek-c-accent));
+    }
+    li.s-active {
+      background: var(--ltek-c-accent-fade);
+      border-radius: var(--ltek-r-ctrl);
+    }
+    li.s-active .what {
+      font-weight: var(--ltek-fw-semibold);
+    }
+    li.s-todo {
+      opacity: 0.6;
+    }
+    .mark {
+      --mdc-icon-size: 16px;
+      color: var(--success-color, #43a047);
+    }
+    .mark.spin {
+      color: var(--ltek-c-accent);
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
     }
     button.edit {
       --mdc-icon-size: 16px;

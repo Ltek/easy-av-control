@@ -221,6 +221,8 @@ _RESTORED_STATES = {
 # Run state of the room whose command runs in the current task (and the hook
 # tasks it spawns), so warnings end up at the right room.
 _current_room: ContextVar[RoomRuntime | None] = ContextVar("easy_av_control_room", default=None)
+# The device a start or stop is busy with, so the card's live Flow can mark its row
+_current_device: ContextVar[str | None] = ContextVar("easy_av_control_device", default=None)
 
 
 def power_service(entity_id: str, *, on: bool) -> tuple[str, str]:
@@ -843,6 +845,24 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # Remote control
     # ------------------------------------------------------------------
 
+    def device_states(self, room_id: str) -> dict[str, dict[str, Any]]:
+        """Each device's state now, for the Flow's colours: group (on, starting, stopping, off, error, unknown,
+        unavailable) and its own word for it."""
+        out: dict[str, dict[str, Any]] = {}
+        for device_id, device in self.rooms[room_id][CONF_DEVICES].items():
+            state = self.hass.states.get(device[CONF_ENTITY_ID])
+            if state is None or state.state == STATE_UNAVAILABLE:
+                out[device_id] = {"group": "unavailable", "value": None}
+                continue
+            source = self.state_source(device)
+            if source is not None:
+                group, value = source.current(self.hass)
+            else:
+                value = state.state
+                group = GROUP_OFF if value in (STATE_OFF, STATE_STANDBY) else GROUP_ON if value != STATE_UNKNOWN else "unknown"
+            out[device_id] = {"group": group, "value": value}
+        return out
+
     def room_view(self, room_id: str) -> dict[str, Any]:
         """Everything a remote control needs to show a room."""
         room = self.rooms[room_id]
@@ -1043,6 +1063,7 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             done = 0
             for device_id in new_devices:
+                _current_device.set(device_id)
                 device = devices[device_id]
                 if device.get(CONF_POWER_SWITCH) in powered and device[CONF_DELAY_AFTER_POWER]:
                     # Devices on the same switch boot in parallel
@@ -1087,6 +1108,7 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 rt.progress = (done, total)
                 self.async_update_listeners()
 
+            _current_device.set(None)
             # Checks: everything is on; is it working (a picture on the Lumagen, on the projector)?
             if checks:
                 await self._async_run_checks(rt, room, checks)
@@ -1167,6 +1189,7 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         cooling: dict[str, list[str]] = {}
         waits: dict[str, list[tuple[dict[str, Any], StateSource]]] = {}
         for device_id in unused:
+            _current_device.set(device_id)
             device = devices[device_id]
             self._doing(rt, "turn_off", name=self._device_name(device))
             await self._async_power_off(device[CONF_ENTITY_ID], context)
@@ -1311,6 +1334,8 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "target": target,
                     "until": until.isoformat(),
                 }
+                if (device_id := _current_device.get()) is not None:
+                    rt.current["device"] = device_id
                 self.async_update_listeners()
 
         return await async_wait_for(self.hass, source, target, timeout, on_change=shown)
@@ -1498,6 +1523,7 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 cooling: dict[str, list[str]] = {}
                 waits: dict[str, list[tuple[dict[str, Any], StateSource]]] = {}
                 for device_id in reversed(device_ids):
+                    _current_device.set(device_id)
                     device = devices[device_id]
                     entity_id = device[CONF_ENTITY_ID]
                     was_off = self._is_off(entity_id)
@@ -1512,6 +1538,7 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         if delay > 0 or source is not None:
                             cooling.setdefault(switch, []).append(self._device_name(device))
 
+                _current_device.set(None)
                 used_elsewhere = self._switches_used_elsewhere(rt)
                 switches = [
                     s
@@ -1855,6 +1882,8 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         ``seconds`` a wait, sent as the time it ends (``until``).
         """
         current: dict[str, Any] = {"kind": kind, "name": name, **extra}
+        if (device := _current_device.get()) is not None:
+            current["device"] = device
         if seconds is not None:
             current["until"] = (dt_util.utcnow() + timedelta(seconds=seconds)).isoformat()
         rt.current = current
@@ -1863,6 +1892,9 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _entity_name(self, entity_id: str) -> str:
         state = self.hass.states.get(entity_id)
         return (state.name if state is not None else None) or entity_id
+
+    def device_name(self, device: dict[str, Any]) -> str:
+        return self._device_name(device)
 
     def _device_name(self, device: dict[str, Any]) -> str:
         """The name of a device as the card shows it."""

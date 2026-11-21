@@ -45,6 +45,10 @@ export interface CardConfig {
   room: string;
   entry_id?: string;
   name?: string;
+  /** The Flow under the status: a chip opens it; it opens by itself while the room starts or stops (default on) */
+  show_flow?: boolean;
+  /** The Flow with entities, actions and notes (default off) */
+  flow_details?: boolean;
 }
 
 /** easy_av_control/control/rooms */

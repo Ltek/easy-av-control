@@ -227,5 +227,34 @@ await page.evaluate(async () => {
 await settle(2500);
 await shotBoth('card-editor');
 
+// The card as Home Assistant's editor shows it (it sets preview = true), with its Flow open
+await page.evaluate(async () => {
+  document.getElementById('ed-host')?.remove();
+  const ha = document.querySelector('home-assistant');
+  await customElements.whenDefined('easy-av-control-card');
+  const host = document.createElement('div');
+  host.id = 'card-host';
+  host.style.cssText = 'position:fixed;inset:0;z-index:99999;background:var(--primary-background-color);padding:24px;overflow:auto';
+  const box = document.createElement('div');
+  box.style.cssText = 'max-width:520px';
+  const card = document.createElement('easy-av-control-card');
+  card.hass = ha.hass;
+  card.setConfig({ type: 'custom:easy-av-control-card', room: 'living_room' });
+  card.preview = true;
+  box.appendChild(card); host.appendChild(box); document.body.appendChild(host);
+  window.__eacCard = card;
+});
+await settle(2500);
+await page.evaluate(() => window.__eacCard._flowOpen = true);
+await settle(2500);
+await shotBoth('card-flow');
+// Starting: the Flow marks what is done and what runs now
+await page.evaluate(() => {
+  const ha = document.querySelector('home-assistant');
+  ha.hass.callService('easy_av_control', 'start_activity', { room: 'living_room', activity: 'movie' });
+});
+await settle(5000);
+await shotBoth('card-flow-live');
+
 console.log(errors.length ? `PAGE ERRORS:\n${[...new Set(errors)].join('\n')}` : 'no page errors');
 await browser.close();

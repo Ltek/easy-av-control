@@ -762,3 +762,36 @@ async def test_card_preview_routes(
     assert (await _preview(hass_ws_client, hass, remote_room()["rooms"]["wz"], "kino"))[
         "error"
     ]["message"] == "Unknown activity"
+
+
+async def test_live_flow_states_and_the_device_being_switched(
+    hass: HomeAssistant, devices: Devices, hass_ws_client
+) -> None:
+    """The card's live Flow: the saved activity's rows with names, each device's state, and which device a
+    start is busy with."""
+    coordinator = await setup(hass, devices, living_room())
+    client = await hass_ws_client(hass)
+
+    await client.send_json_auto_id({"type": "easy_av_control/control/flow", "room": "wz", "activity": "tv"})
+    flow = (await client.receive_json())["result"]
+    assert flow["error"] is None
+    assert [r["device"] for r in flow["rows"] if r["kind"] == "device"] == ["onkyo", "beamer", "vu"]
+    assert set(flow["room"]["devices"]) == {"onkyo", "beamer", "vu"}
+    assert flow["room"]["activities"]["tv"]["name"]
+
+    await client.send_json_auto_id({"type": "easy_av_control/control/states", "room": "wz"})
+    states = (await client.receive_json())["result"]
+    assert set(states) == {"onkyo", "beamer", "vu"}
+    assert all(v["group"] in ("on", "off", "unknown", "unavailable", "starting", "stopping", "error") for v in states.values())
+
+    seen: list[str | None] = []
+
+    def watch() -> None:
+        current = coordinator.runtime("wz").current
+        if current and current.get("kind") == "turn_on":
+            seen.append(current.get("device"))
+
+    remove = coordinator.async_add_listener(watch)
+    await coordinator.async_start_activity("wz", "tv")
+    remove()
+    assert set(seen) <= {"onkyo", "beamer", "vu"} and seen

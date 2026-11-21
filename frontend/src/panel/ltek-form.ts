@@ -141,6 +141,7 @@ export class LtekForm extends LitElement {
           >
             ${field.required && current ? nothing : html`<option value="" ?selected=${!current}>–</option>`}
             ${list.map((o) => html`<option value=${o.value} ?selected=${o.value === current}>${o.label}</option>`)}
+            ${current && !list.some((o) => o.value === current) ? html`<option value=${current} selected>${current}</option>` : nothing}
           </select>
         </div>
         ${help}`;

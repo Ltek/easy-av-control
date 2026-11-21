@@ -3,6 +3,10 @@
 const STRINGS = {
   en: {
     "state.idle": "Off",
+    "flow.show": "Flow",
+    "flow.details": "Details",
+    "editor.show_flow": "Flow (opens by itself while the room starts or stops)",
+    "editor.flow_details": "Flow with entities, actions and notes",
     "state.starting": "Starting …",
     "state.active": "On",
     "now.paused": "Paused",
@@ -94,6 +98,10 @@ const STRINGS = {
   },
   de: {
     "state.idle": "Aus",
+    "flow.show": "Ablauf",
+    "flow.details": "Details",
+    "editor.show_flow": "Ablauf (öffnet sich selbst, während der Raum startet oder stoppt)",
+    "editor.flow_details": "Ablauf mit Entitäten, Aktionen und Hinweisen",
     "state.starting": "Startet …",
     "state.active": "An",
     "now.paused": "Pausiert",

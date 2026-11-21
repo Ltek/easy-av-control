@@ -219,7 +219,7 @@ export class EasyAvControlRemotePreview extends LitElement {
       <div class="card">
         <easy-av-control-card
           .hass=${this.hass}
-          .preview=${view}
+          .demoView=${view}
           @preview-call=${this._onCall}
         ></easy-av-control-card>
       </div>

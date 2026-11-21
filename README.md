@@ -470,7 +470,13 @@ Add the card to any dashboard (**Edit dashboard → Add card → Easy AV Control
 type: custom:easy-av-control-card
 room: wohnzimmer
 name: Living room   # optional title
+show_flow: true     # the Flow chip; opens by itself while the room starts or stops (default true)
+flow_details: false # the Flow with entities, actions and notes (default false)
 ```
+
+**Flow** on the card is the same Flow as in the panel, for the running activity (or the one the power button
+starts). While the room starts or stops it marks each row: ✓ done, spinning while it runs, dimmed still to come.
+Each device is coloured by its state now. **Details** shows or hides entities, actions and notes.
 
 The card shows the room's state with a power button (toggle), the activities as buttons, the start progress with what it is busy with (e.g. "Epson Beamer is booting, 40 s left", "Waiting for Apple TV, at most 1:56", "Step 1 of 3: Set source"), devices cooling down after a stop or switch ("Cooling down: Epson Beamer, power off in 2:30", also while the room is off), errors, and — while an activity runs — what is playing (app, title, series or artist, artwork and the position of a film or episode, from the activity's playback device or else its last media player) and the remote: volume rocker and slider, d-pad, channel rocker, navigation and playback keys and the activity's own and quick-select buttons. Only what the running activity offers is shown. Keys send when released, so scrolling the dashboard across the remote sends nothing; volume and arrow keys repeat while held. It works for every user, in the browser and in the Home Assistant app.
 
