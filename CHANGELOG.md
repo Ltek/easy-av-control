@@ -1,5 +1,15 @@
 # Changelog
 
+## v2026.11.21.9
+
+**Added**
+- **Profile form:** profiles are edited in a form instead of only YAML (YAML stays one click away). Panels for
+  General, Status, Timing, Remote / outlet / settings, Picture check and Jobs, one open at a time. Entities are
+  picked on a real device of the integration and stored the way any Home Assistant finds them (type and
+  translation key, else the unique-ID suffix or device class), never by entity ID. State values are chips:
+  the values the picked entity can show are offered (a value already used in another group isn't), and any
+  other can be typed. Built-in profiles open in the same form, read only.
+
 ## v2026.11.21.8
 
 **Changed**

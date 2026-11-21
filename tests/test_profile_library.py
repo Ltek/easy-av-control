@@ -220,3 +220,21 @@ async def test_flow_without_a_profile_is_unchanged(hass: HomeAssistant):
     stop = plan_stop(hass, "kino", _room(), "movie")
     cut = next(r for r in stop["rows"] if r["kind"] == "outlets_off")
     assert cut["at"] == [60, 60] and "after_status" not in cut
+
+
+async def test_ws_profile_sample(hass: HomeAssistant, hass_ws_client):
+    _register_jvc(hass)
+    hass.states.async_set(JVC_POWER, "warming", {"options": ["standby", "warming", "on", "cooling", "error"]})
+    websocket.async_register(hass)
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id({"type": f"{DOMAIN}/profiles/sample", "integration": "jvc_projector_ha"})
+    result = (await client.receive_json())["result"]
+    assert result["integrations"] == ["jvc_projector_ha"] and len(result["devices"]) == 1
+    by_id = {e["entity_id"]: e for e in result["entities"]}
+    assert by_id[JVC]["main"] is True
+    power = by_id[JVC_POWER]
+    assert power["translation_key"] == "jvc_power_state" and power["domain"] == "sensor"
+    assert power["unique_id_suffix"] == "_power"          # "jvc" + "_power"
+    assert power["values"] == ["warming", "standby", "on", "cooling", "error"]
+    await client.send_json_auto_id({"type": f"{DOMAIN}/profiles/sample", "integration": "nothing"})
+    assert (await client.receive_json())["result"]["entities"] == []

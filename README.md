@@ -356,7 +356,7 @@ isp:
 Unquoted `on` / `off` work too (YAML reads them as true / false; Easy AV Control takes them back).
 
 **Profiles** are listed in the panel under **Profiles**: the built-in ones (locked) and your own. **Duplicate**
-a built-in profile to change it, edit yours as YAML, and **Export** / **Import** them as text to share. Your own
+a built-in profile to change it, edit yours in a form (or as YAML), and **Export** / **Import** them as text to share. Your own
 profile for an integration is used instead of the built-in one; a device can also name one with `profile: <id>`.
 Each device page shows what was **detected** for it, with **Use these** for the remote and outlet it found.
 

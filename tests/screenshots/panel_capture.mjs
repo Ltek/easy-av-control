@@ -136,6 +136,20 @@ await settle(1200);
 await shotBoth('profile-export');
 await page.keyboard.press('Escape');
 
+// The profile form: your own profile (editable), its Status panel open
+await openPanel();
+await page.getByRole('button', { name: 'Profiles' }).last().click();
+await settle(1200);
+await page.locator('easy-av-control-profiles [data-profile="av_demo"] button[title="Edit"]').click();
+await page.locator('easy-av-control-profile-form').waitFor({ timeout: 30000 });
+await settle(1500);
+await shotBoth('profile-form');
+await page.locator('easy-av-control-profile-form details.ltek-sec >> nth=1 >> summary').click();
+await settle(800);
+await shotBoth('profile-form-status');
+await page.getByRole('button', { name: /Cancel/ }).first().click();
+await settle(600);
+
 // Detect integrations: with the demo profile deleted, the fake devices' integration has no profile
 await ws({ type: 'easy_av_control/profiles/delete', profile_id: 'av_demo' });
 await openPanel();
@@ -145,7 +159,7 @@ await settle(1500);
 await shotBoth('detect');
 // + Profile from there: a draft with Learn
 await page.locator('easy-av-control-detect button.ltek-add').first().click();
-await page.locator('easy-av-control-profiles ha-form').waitFor({ timeout: 30000 });
+await page.locator('easy-av-control-profiles easy-av-control-profile-form').waitFor({ timeout: 30000 });
 await settle(2000);
 await shotBoth('profile-draft');
 

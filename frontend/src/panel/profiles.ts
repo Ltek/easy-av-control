@@ -12,6 +12,7 @@ import type { HomeAssistant } from "../types";
 import { learnGroups, profileSummary, type ProfileView } from "./device-state";
 import type { Obj } from "./model";
 import { ltekChrome, ltekTokens } from "./ltek-styles";
+import "./profile-form";
 import { t } from "./strings";
 
 type Learn = { watch: string; device: string; on: string[]; off: string[]; mode: "on" | "off" | null };
@@ -27,6 +28,7 @@ export class EasyAvControlProfiles extends LitElement {
     _dialog: { state: true },
     _notice: { state: true },
     _pick: { state: true },
+    _yaml: { state: true },
     draftFor: { attribute: false },
     focusProfile: { attribute: false },
   };
@@ -39,6 +41,8 @@ export class EasyAvControlProfiles extends LitElement {
   declare _notice?: string;
   /** + Profile: the integrations without a profile, while choosing one */
   declare _pick?: string[];
+  /** The editor shows YAML instead of the form */
+  declare _yaml: boolean;
   /** Open a + Profile draft for this integration (set by the panel from Detect integrations) */
   declare draftFor?: string;
   /** Show this profile's summary and scroll to it (set by the panel from a Detected Devices chip) */
@@ -47,6 +51,7 @@ export class EasyAvControlProfiles extends LitElement {
   constructor() {
     super();
     this.profiles = [];
+    this._yaml = false;
   }
 
   private _t(key: string, params?: Record<string, string>): string {
@@ -293,29 +298,41 @@ export class EasyAvControlProfiles extends LitElement {
           ? nothing
           : html`<button class="ltek-btn primary" @click=${this._save}>${this._t("profile_save")}</button>`}
       </div>
-      ${editing.learn ? this._renderLearn(editing.learn) : nothing}
-      <details class="ltek-sec" open>
-        <summary>
-          <ha-icon icon=${editing.readonly ? "mdi:lock-outline" : "mdi:pencil"}></ha-icon>${String(editing.data.name ?? editing.data.id)}
-          <ha-icon class="chev" icon="mdi:chevron-down"></ha-icon>
-        </summary>
-        <div class="ltek-body">
-          <p class="ltek-hint">${this._t(editing.readonly ? "profile_readonly" : "profile_editor_hint")}</p>
-          ${editing.error ? html`<p class="ltek-error">${editing.error}</p>` : nothing}
-          <ha-form
+      <h2 class="title">
+        <ha-icon icon=${editing.readonly ? "mdi:lock-outline" : "mdi:pencil"}></ha-icon>${String(editing.data.name ?? editing.data.id)}
+        <span class="mode">
+          <button class="ltek-btn ${this._yaml ? "" : "primary"}" @click=${() => (this._yaml = false)}>${this._t("pf.form")}</button>
+          <button class="ltek-btn ${this._yaml ? "primary" : ""}" @click=${() => (this._yaml = true)}>YAML</button>
+        </span>
+      </h2>
+      <p class="ltek-hint">${this._t(editing.readonly ? "profile_readonly" : this._yaml ? "profile_editor_hint" : "pf.form_hint")}</p>
+      ${editing.error ? html`<p class="ltek-error">${editing.error}</p>` : nothing}
+      ${editing.learn && !editing.readonly ? this._renderLearn(editing.learn) : nothing}
+      ${this._yaml
+        ? html`<details class="ltek-sec" open>
+            <summary><ha-icon icon="mdi:code-braces"></ha-icon>YAML<ha-icon class="chev" icon="mdi:chevron-down"></ha-icon></summary>
+            <div class="ltek-body">
+              <ha-form
+                .hass=${this.hass}
+                .data=${{ yaml: editing.data }}
+                .schema=${[{ name: "yaml", selector: { object: {} } }]}
+                .disabled=${editing.readonly}
+                .computeLabel=${() => ""}
+                @value-changed=${(ev: CustomEvent) => {
+                  if (editing.readonly) return;
+                  const yaml = (ev.detail.value as { yaml?: Obj }).yaml;
+                  if (yaml && typeof yaml === "object") this._editing = { ...editing, data: yaml, error: undefined };
+                }}
+              ></ha-form>
+            </div>
+          </details>`
+        : html`<easy-av-control-profile-form
             .hass=${this.hass}
-            .data=${{ yaml: editing.data }}
-            .schema=${[{ name: "yaml", selector: { object: {} } }]}
-            .disabled=${editing.readonly}
-            .computeLabel=${() => ""}
-            @value-changed=${(ev: CustomEvent) => {
-              if (editing.readonly) return;
-              const yaml = (ev.detail.value as { yaml?: Obj }).yaml;
-              if (yaml && typeof yaml === "object") this._editing = { ...editing, data: yaml, error: undefined };
-            }}
-          ></ha-form>
-        </div>
-      </details>
+            .profile=${editing.data}
+            ?readonly=${editing.readonly}
+            @profile-changed=${(ev: CustomEvent<{ profile: Obj }>) =>
+              (this._editing = { ...this._editing!, data: ev.detail.profile, error: undefined })}
+          ></easy-av-control-profile-form>`}
     `;
   }
 
@@ -444,6 +461,23 @@ export class EasyAvControlProfiles extends LitElement {
       .ltek-btn {
         display: inline-flex;
         align-items: center;
+        gap: var(--ltek-sp-1);
+      }
+      h2.title {
+        display: flex;
+        align-items: center;
+        gap: var(--ltek-sp-3);
+        font-size: var(--ltek-fs-panel-title);
+        font-weight: var(--ltek-fw-bold);
+        margin: var(--ltek-sp-2) 0;
+        --mdc-icon-size: var(--ltek-icon-lg);
+      }
+      h2.title > ha-icon {
+        color: var(--ltek-c-accent);
+      }
+      h2.title .mode {
+        margin-left: auto;
+        display: inline-flex;
         gap: var(--ltek-sp-1);
       }
       .preview {

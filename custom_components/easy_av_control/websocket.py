@@ -87,6 +87,7 @@ def async_register(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_detect_all)
     websocket_api.async_register_command(hass, ws_detect_apply)
     websocket_api.async_register_command(hass, ws_profiles_draft)
+    websocket_api.async_register_command(hass, ws_profiles_sample)
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/control/rooms"})
@@ -693,3 +694,78 @@ def ws_profiles_draft(
         connection.send_error(msg["id"], "not_found", f"No media player or remote of {msg['integration']}")
         return
     connection.send_result(msg["id"], draft)
+
+
+_SKIP_ATTRIBUTES = {"friendly_name", "icon", "entity_picture", "supported_features", "device_class",
+                    "unit_of_measurement", "state_class", "attribution", "assumed_state", "restored"}
+
+
+def profile_sample(hass: HomeAssistant, integration: str, device_id: str | None = None) -> dict[str, Any]:
+    """An example device of an integration for the profile form: its entities as profiles match them.
+
+    For each entity: domain, translation key, device class, unique-ID suffix (relative to the device's main
+    entity, e.g. "_power"), its state now, its simple attributes, and the values it can show (its state, and
+    an ``options`` list such as an enum sensor's).
+    """
+    from homeassistant.helpers import device_registry as dr
+
+    ent_reg, dev_reg = er.async_get(hass), dr.async_get(hass)
+    entries = [e for e in ent_reg.entities.values() if e.platform == integration and e.disabled_by is None]
+    av_platforms = sorted(
+        {e.platform for e in ent_reg.entities.values() if e.disabled_by is None and e.domain in ("media_player", "remote", "switch")}
+    )
+    device_ids = sorted({e.device_id for e in entries if e.device_id})
+    devices = []
+    for did in device_ids:
+        device = dev_reg.async_get(did)
+        devices.append({"id": did, "name": (device.name_by_user or device.name) if device else did})
+    chosen = device_id if device_id in device_ids else (device_ids[0] if device_ids else None)
+    on_device = [e for e in entries if e.device_id == chosen] if chosen else entries
+    order = {"media_player": 0, "remote": 1, "switch": 2}
+    main = min(on_device, key=lambda e: (order.get(e.domain, 9), e.entity_id), default=None)
+    main_uid = str(main.unique_id) if main else ""
+    entities = []
+    for e in sorted(on_device, key=lambda e: (e.domain, e.entity_id)):
+        uid = str(e.unique_id)
+        state = hass.states.get(e.entity_id)
+        attributes = {
+            k: v for k, v in (state.attributes.items() if state else [])
+            if k not in _SKIP_ATTRIBUTES and isinstance(v, (str, int, float, bool))
+        }
+        values: list[str] = []
+        if state is not None and state.state not in ("unavailable", "unknown"):
+            values.append(state.state)
+        options = state.attributes.get("options") if state else None
+        if isinstance(options, list):
+            values += [str(o) for o in options if str(o) not in values]
+        entities.append(
+            {
+                "entity_id": e.entity_id,
+                "name": (state.name if state else None) or e.name or e.original_name or e.entity_id,
+                "domain": e.domain,
+                "translation_key": e.translation_key,
+                "device_class": e.device_class or e.original_device_class,
+                "unique_id_suffix": uid[len(main_uid):] if main_uid and uid.startswith(main_uid) and uid != main_uid else None,
+                "state": state.state if state else None,
+                "attributes": attributes,
+                "values": values,
+                "main": main is not None and e.entity_id == main.entity_id,
+            }
+        )
+    return {"integrations": av_platforms, "devices": devices, "device_id": chosen, "entities": entities}
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/profiles/sample",
+        vol.Required("integration"): str,
+        vol.Optional("device_id"): vol.Any(None, str),
+    }
+)
+@websocket_api.require_admin
+@callback
+def ws_profiles_sample(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """An example device of an integration, for the profile form's entity and value pickers."""
+    connection.send_result(msg["id"], profile_sample(hass, msg["integration"], msg.get("device_id")))
