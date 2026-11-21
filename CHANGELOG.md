@@ -1,5 +1,18 @@
 # Changelog
 
+## v2026.11.21.10
+
+**Fixed**
+- **The card no longer 404s while Home Assistant starts.** The card was served only from the integration's own
+  path, which exists once Easy AV Control is set up, so a dashboard opened during HA's start (or the Companion
+  App reconnecting) got a 404 and "Custom element doesn't exist: easy-av-control-card". The card is now copied
+  to `<config>/www/easy_av_control/` (only when it changed) and the dashboard resource points at
+  `/local/easy_av_control/easy-av-control-card.js`, which HA serves from its start. The existing resource is
+  updated in place, not added a second time. The old path keeps working as a fallback and for the sidebar panel.
+
+**Restart Home Assistant after updating.** If `<config>/www` didn't exist, it is created now and HA starts
+serving it from the next restart, so that case needs a second restart before the resource moves to `/local/`.
+
 ## v2026.11.21.9
 
 **Added**

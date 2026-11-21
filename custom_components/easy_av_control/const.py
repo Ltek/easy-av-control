@@ -159,5 +159,8 @@ SIGNAL_ROOMS_UPDATED: Final = f"{DOMAIN}_rooms_updated"
 # Frontend
 FRONTEND_URL_BASE: Final = f"/{DOMAIN}_static"
 CARD_FILENAME: Final = "easy-av-control-card.js"
+# The card's copy in <config>/www, which HA serves as /local from its start, before integrations load
+LOCAL_DIR: Final = DOMAIN
+LOCAL_URL_BASE: Final = f"/local/{LOCAL_DIR}"
 PANEL_FILENAME: Final = "easy-av-control-panel.js"
 PANEL_URL_PATH: Final = "easy-av-control"

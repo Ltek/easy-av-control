@@ -21,7 +21,11 @@ from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import async_get_integration
 
 from . import websocket
-from .card_resource import async_register_card_resource, async_remove_card_resource
+from .card_resource import (
+    async_register_card_resource,
+    async_remove_card_resource,
+    copy_to_www,
+)
 from .const import (
     ATTR_ACTIVITY,
     ATTR_COMMAND,
@@ -34,6 +38,8 @@ from .const import (
     CONFIG_VERSION,
     DOMAIN,
     FRONTEND_URL_BASE,
+    LOCAL_DIR,
+    LOCAL_URL_BASE,
     PANEL_FILENAME,
     PANEL_URL_PATH,
     SERVICE_RELOAD,
@@ -179,8 +185,19 @@ async def _async_register_frontend(hass: HomeAssistant) -> None:
     def url(name: str) -> str:
         return f"{FRONTEND_URL_BASE}/{name}?v={version}-{mtimes[name]}"
 
+    # The static path above stays: it is the fallback, YAML dashboards may
+    # use it, and the panel (loaded only when opened) comes from there.
+    try:
+        local = await hass.async_add_executor_job(
+            copy_to_www, hass.config.path("www"), LOCAL_DIR, directory / CARD_FILENAME
+        )
+    except OSError as err:
+        _LOGGER.debug("Card not copied to www: %s", err)
+        local = False
     card_url = url(CARD_FILENAME)
-    if not await async_register_card_resource(hass, _card_base(), card_url):
+    if local:
+        card_url = f"{LOCAL_URL_BASE}/{CARD_FILENAME}?v={version}-{mtimes[CARD_FILENAME]}"
+    if not await async_register_card_resource(hass, _card_bases(), card_url):
         add_extra_js_url(hass, card_url)
     if PANEL_FILENAME in mtimes:
         await panel_custom.async_register_panel(
@@ -195,9 +212,9 @@ async def _async_register_frontend(hass: HomeAssistant) -> None:
         )
 
 
-def _card_base() -> str:
-    """URL of the card without the version."""
-    return f"{FRONTEND_URL_BASE}/{CARD_FILENAME}"
+def _card_bases() -> tuple[str, str]:
+    """URLs of the card without the version: the static path and the www copy."""
+    return (f"{FRONTEND_URL_BASE}/{CARD_FILENAME}", f"{LOCAL_URL_BASE}/{CARD_FILENAME}")
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -284,7 +301,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Remove the card's dashboard resource with the last entry."""
     if not hass.config_entries.async_entries(DOMAIN):
-        await async_remove_card_resource(hass, _card_base())
+        await async_remove_card_resource(hass, _card_bases())
 
 
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
