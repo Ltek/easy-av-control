@@ -20,6 +20,20 @@ const browser = await chromium.launch({
 const errors = [];
 const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, colorScheme: 'dark' });
 const page = await context.newPage();
+// Name the websocket command behind an "Unknown command" error
+page.on('websocket', (ws) => {
+  const sent = new Map();
+  ws.on('framesent', ({ payload }) => {
+    try { const m = JSON.parse(payload); if (m.id) sent.set(m.id, m.type); } catch { /* not JSON */ }
+  });
+  ws.on('framereceived', ({ payload }) => {
+    try {
+      for (const m of [].concat(JSON.parse(payload))) {
+        if (m.error?.code === 'unknown_command') console.log('UNKNOWN COMMAND', sent.get(m.id));
+      }
+    } catch { /* not JSON */ }
+  });
+});
 page.on('pageerror', (e) => errors.push(`${e.message} ${JSON.stringify(e).slice(0, 300)} ${(e.stack || '').split('\n').slice(0, 3).join(' | ')} [${page.url()}]`));
 await page.addInitScript(() => window.addEventListener('unhandledrejection', (ev) => console.error('UNHANDLED', JSON.stringify(ev.reason), String(ev.reason?.stack || ''))));
 page.on('console', async (m) => {
@@ -112,6 +126,15 @@ await page.mouse.wheel(0, 650);
 await settle(800);
 await shotBoth('device-state');
 
+// Power Outlet: its checkbox, greyed out while unticked
+await page.locator('easy-av-control-room-editor summary', { hasText: 'Power Outlet' }).click();
+await settle(800);
+await page.locator('easy-av-control-room-editor summary', { hasText: 'Power Outlet' }).scrollIntoViewIfNeeded();
+await shotBoth('device-power');
+await page.locator('easy-av-control-room-editor label.check input').first().click();
+await settle(800);
+await shotBoth('device-power-off');
+
 // An activity with its flow
 await openPanel();
 await page.getByRole('tab', { name: 'Activities' }).click();
@@ -119,6 +142,21 @@ await settle(800);
 await page.getByRole('button', { name: /^TV/ }).first().click();
 await settle(3000);
 await shotBoth('activity');
+// Its devices as an ordered list
+await page.locator('easy-av-control-room-editor summary', { hasText: /Devices/ }).click();
+await settle(800);
+await shotBoth('activity-devices');
+
+// The menu's Flow icon opens the activity at its Flow
+await page.locator('easy-av-control-panel button.nav-flow').first().click();
+await settle(2500);
+await page.locator('easy-av-control-flow').scrollIntoViewIfNeeded();
+await shotBoth('activity-flow');
+// The Remote control card's panels under their divider; Settings in the card by integration
+await page.locator('easy-av-control-room-editor summary', { hasText: 'Settings in the card' }).click();
+await settle(1200);
+await page.locator('easy-av-control-room-editor .card-divider').scrollIntoViewIfNeeded();
+await shotBoth('activity-card');
 
 // Profiles
 await page.getByRole('button', { name: 'Profiles' }).last().click();

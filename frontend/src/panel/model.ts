@@ -343,3 +343,36 @@ export function renameDevice(room: Room, from: string, to: string): Room {
   }
   return { ...room, devices, activities };
 }
+
+/** A room's activities in their order: position, then name (the Activities tab and the menu). */
+export function sortedActivities(room: Room | undefined): [string, Activity][] {
+  return Object.entries(room?.activities ?? {}).sort(
+    ([ka, a], [kb, b]) =>
+      (a.order ?? 1000) - (b.order ?? 1000) ||
+      (a.name ?? ka).localeCompare(b.name ?? kb, undefined, { sensitivity: "base" }),
+  );
+}
+
+/** "androidtv_remote" -> "Androidtv Remote": an integration's domain as a heading. */
+export function integrationTitle(domain: string): string {
+  return domain
+    .split("_")
+    .filter(Boolean)
+    .map((w) => w[0].toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+/**
+ * Card settings in columns by integration: an entity setting by its own
+ * entity's integration, a source or sound mode by its device's. Columns keep
+ * the order the settings come in; "" collects what has no known integration.
+ */
+export function byIntegration(hass: HomeAssistant, room: Room, settings: Obj[]): [string, Obj[]][] {
+  const columns = new Map<string, Obj[]>();
+  for (const setting of settings) {
+    const entity = (setting.entity as string | undefined) || room.devices?.[String(setting.device)]?.entity_id;
+    const platform = (entity && hass.entities?.[entity]?.platform) || "";
+    columns.set(platform, [...(columns.get(platform) ?? []), setting]);
+  }
+  return [...columns.entries()];
+}

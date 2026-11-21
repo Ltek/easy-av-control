@@ -456,7 +456,7 @@ export class EasyAvControlFlow extends LitElement {
       justify-self: end;
     }
     .time {
-      color: var(--secondary-text-color);
+      color: var(--state-icon-active-color, var(--state-icon-color, var(--secondary-text-color)));
       font-size: 0.85em;
       font-variant-numeric: tabular-nums;
       white-space: nowrap;
@@ -482,9 +482,15 @@ export class EasyAvControlFlow extends LitElement {
       width: 22px;
       height: 22px;
       border-radius: 50%;
-      background: var(--secondary-background-color);
+      border: 1px solid var(--accent-color, var(--ltek-c-accent));
+      color: var(--accent-color, var(--ltek-c-accent));
       font-size: 0.8em;
       font-weight: 500;
+      box-sizing: border-box;
+    }
+    /* A device's (or the steps') heading: number and name in the theme accent */
+    li.header .what {
+      color: var(--accent-color, var(--ltek-c-accent));
     }
     .body {
       display: flex;

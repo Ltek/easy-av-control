@@ -600,7 +600,7 @@ activities:
 
 `easy_av_control.send_command` sets an entity setting with the entity ID as `command`, the new value as `value` and the device as `device`, e.g. `command: number.onkyo_bass`, `value: -2`, `device: onkyo`.
 
-In the panel it is **Settings in the card** on every device's page (automatic, or chosen with favourites) and on every activity's page (from the devices, or chosen for that activity). A receiver can still refuse a sound mode that does not fit the incoming signal; the card then keeps showing the mode it actually uses.
+In the panel it is **Settings in the card**, under the Remote control card line, on every device's page (automatic, or chosen with favourites) and on every activity's page (from the devices, or chosen for that activity). A receiver can still refuse a sound mode that does not fit the incoming signal; the card then keeps showing the mode it actually uses.
 
 A command is resolved in this order: the activity's own `commands`, then the device of its group (own `commands` or built-in action), then the first device of the activity that defines it — so digit keys `"0"`–`"9"` only need to exist on the set-top box.
 

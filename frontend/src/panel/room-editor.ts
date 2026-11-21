@@ -16,7 +16,10 @@ import {
   SETTING_LISTS,
   STEP_TYPES,
   autoSettings,
+  byIntegration,
   deviceAutoSettings,
+  integrationTitle,
+  sortedActivities,
   clean,
   cleanRemote,
   deviceList,
@@ -101,6 +104,8 @@ export class EasyAvControlRoomEditor extends LitElement {
     _related: { state: true },
     _detect: { state: true },
     profiles: { attribute: false },
+    jump: { attribute: false },
+    _powerOn: { state: true },
   };
 
   declare hass: HomeAssistant;
@@ -122,6 +127,12 @@ export class EasyAvControlRoomEditor extends LitElement {
   private _detectAsked = new Set<string>();
   /** All profiles (profiles/list), for the profile picker; given by the panel */
   declare profiles: ProfileView[];
+  /** From the menu: open this activity, at its Flow when ``flow``; ``n`` makes each click a change */
+  declare jump?: { activity: string; flow: boolean; n: number };
+  /** Devices whose outlet is ticked but not picked yet */
+  declare _powerOn: Set<string>;
+  /** The outlet a device had when it was unticked, to bring back when it is ticked again */
+  private _powerMemo = new Map<string, Obj>();
   /** One panel open at a time (design guide): per page, the open one ("" = none); absent = the first one */
   private _openPanel = new Map<string, string>();
   /** While a page renders: the first panel that may start open */
@@ -136,6 +147,7 @@ export class EasyAvControlRoomEditor extends LitElement {
     this._related = {};
     this._detect = {};
     this.profiles = [];
+    this._powerOn = new Set();
   }
 
   /** Ask for the related entities whenever the room's device entities change. */
@@ -164,6 +176,18 @@ export class EasyAvControlRoomEditor extends LitElement {
     if (changed.has("roomId") && changed.get("roomId") !== undefined) {
       this._view = { kind: "list" };
       this._notice = undefined;
+    }
+    const jump = this.jump;
+    if (changed.has("jump") && jump && this.room?.activities?.[jump.activity]) {
+      this._view = { kind: "activity", id: jump.activity };
+      this._notice = undefined;
+      if (jump.flow) {
+        this._openPanel.set(this._pageKey(), `activity:${this._t("section_flow")}`);
+      }
+      window.scrollTo({ top: 0 });
+    }
+    if (changed.has("_view") || changed.has("roomId")) {
+      this.dispatchEvent(new CustomEvent("view-changed", { detail: { view: this._view } }));
     }
   }
 
@@ -408,9 +432,10 @@ export class EasyAvControlRoomEditor extends LitElement {
   }
 
   /** One card's ha-form; its values are merged into the whole device. */
-  private _deviceForm(id: string, data: Obj, schema: Obj[]): TemplateResult {
+  private _deviceForm(id: string, data: Obj, schema: Obj[], disabled = false): TemplateResult {
     return html`<ha-form
       .hass=${this.hass}
+      .disabled=${disabled}
       .data=${data}
       .schema=${schema}
       .computeLabel=${this._label}
@@ -453,15 +478,7 @@ export class EasyAvControlRoomEditor extends LitElement {
         "mdi:television",
       )}
       ${this._card(this._t("section_state"), this._t("hint_state"), this._renderState(id, device), "mdi:state-machine")}
-      ${this._card(
-        this._t("section_power"),
-        this._t("hint_power"),
-        this._deviceForm(id, data, [
-          { name: "power_switch", selector: { entity: { filter: { domain: ["switch", "input_boolean", "light"] } } } },
-          ...(device.power_switch ? [{ name: "delay_after_power", selector: SHORT }] : []),
-        ]),
-        "mdi:power-socket-eu",
-      )}
+      ${this._card(this._t("section_power"), this._t("hint_power"), this._renderPower(id, device, data), "mdi:power-socket-eu")}
       ${this._card(
         this._t("section_delays"),
         this._t("hint_delays"),
@@ -503,7 +520,6 @@ export class EasyAvControlRoomEditor extends LitElement {
               : []),
           ])}`,
       )}
-      ${this._card(this._t("card_settings"), this._t("device_settings_hint"), this._renderDeviceSettings(id, device))}
       ${this._advanced(
         this._t("hint_device_advanced"),
         html`<label class="id">
@@ -515,7 +531,46 @@ export class EasyAvControlRoomEditor extends LitElement {
           </label>
           ${this._deviceForm(id, data, [{ name: "commands", selector: { object: {} } }])}`,
       )}
+      ${this._cardDivider()}
+      ${this._card(this._t("card_settings"), this._t("device_settings_hint"), this._renderDeviceSettings(id, device))}
     `;
+  }
+
+  /** Power Outlet: a checkbox, then the outlet and its delay, greyed out while it is off. */
+  private _renderPower(id: string, device: Device, data: Obj): TemplateResult {
+    const used = Boolean(device.power_switch) || this._powerOn.has(id);
+    const toggle = (on: boolean) => {
+      const powerOn = new Set(this._powerOn);
+      const next: Device = { ...device };
+      if (on) {
+        Object.assign(next, this._powerMemo.get(id) ?? {});
+        if (!next.power_switch) powerOn.add(id);
+      } else {
+        if (device.power_switch) {
+          this._powerMemo.set(id, { power_switch: device.power_switch, delay_after_power: device.delay_after_power });
+        }
+        delete next.power_switch;
+        delete next.delay_after_power;
+        powerOn.delete(id);
+      }
+      this._powerOn = powerOn;
+      this._emit({ ...this.room, devices: { ...this.room.devices, [id]: clean(next) } });
+    };
+    return html`<label class="check">
+        <input type="checkbox" .checked=${live(used)} @change=${(ev: Event) => toggle((ev.target as HTMLInputElement).checked)} />
+        ${this._t("power_use")}
+      </label>
+      <div class=${used ? "" : "unused"}>
+        ${this._deviceForm(
+          id,
+          used ? data : { ...data, ...(this._powerMemo.get(id) ?? {}) },
+          [
+            { name: "power_switch", selector: { entity: { filter: { domain: ["switch", "input_boolean", "light"] } } } },
+            { name: "delay_after_power", selector: SHORT },
+          ],
+          !used,
+        )}
+      </div>`;
   }
 
   /** config/detect for a device as it is being edited; cached per entity and state settings. */
@@ -783,11 +838,7 @@ export class EasyAvControlRoomEditor extends LitElement {
   // ------------------------------------------------------------------
 
   private _renderActivityList(): TemplateResult {
-    const activities = Object.entries(this.room.activities ?? {}).sort(
-      ([ka, a], [kb, b]) =>
-        (a.order ?? 1000) - (b.order ?? 1000) ||
-        (a.name ?? ka).localeCompare(b.name ?? kb, undefined, { sensitivity: "base" }),
-    );
+    const activities = sortedActivities(this.room);
     const names = (activity: Activity) =>
       (activity.devices ?? []).map((d) => this.room.devices?.[d]?.name ?? d).join(" → ");
     return html`
@@ -829,6 +880,7 @@ export class EasyAvControlRoomEditor extends LitElement {
       routes[g] = !(g in remote) ? "__auto" : remote[g] === null ? "__none" : remote[g];
     }
     routes.touchpad = remote.touchpad === true ? "on" : remote.touchpad === false ? "off" : "auto";
+    const extraButtons = ((remote.buttons as unknown[] | undefined) ?? []).filter((b) => !isQuickSelect(b));
 
     return html`
       ${this._detailHeader(this._t("tab_activities"), activity.name ?? id, () => this._deleteActivity(id, activity))}
@@ -855,28 +907,7 @@ export class EasyAvControlRoomEditor extends LitElement {
       ${this._card(
         this._t("section_activity_devices"),
         this._t("hint_activity_devices"),
-        html`${chosen.length
-            ? html`<ol class="ordered">
-                ${chosen.map(
-                  (d, i) => html`<li>
-                    <span class="li-text">
-                      <span>${this.room.devices?.[d]?.name ?? d}</span>
-                      <span class="sub">${this.room.devices?.[d]?.entity_id ?? ""}</span>
-                    </span>
-                    ${this._moveButtons(chosen, i, (list) => this._setActivity(id, { ...activity, devices: list }))}
-                  </li>`,
-                )}
-              </ol>`
-            : nothing}
-          ${devices.some((d) => !chosen.includes(d))
-            ? this._picker(
-                this._t("add_device_to_activity"),
-                devices
-                  .filter((d) => !chosen.includes(d))
-                  .map((d) => ({ value: d, label: this.room.devices?.[d]?.name ?? d })),
-                (d) => this._setActivity(id, { ...activity, devices: [...chosen, d] }),
-              )
-            : nothing}`,
+        this._renderActivityDevices(id, activity, devices, chosen),
       )}
 
       ${this._card(
@@ -901,6 +932,33 @@ export class EasyAvControlRoomEditor extends LitElement {
         ></easy-av-control-flow>`,
       )}
 
+      ${this._advanced(
+        this._t("hint_activity_advanced"),
+        html`<p class="ltek-hint">${this._t("activity_id_hint", { id })}</p>
+          <ha-form
+            .hass=${this.hass}
+            .data=${{ buttons: extraButtons, activity_commands: activity.commands }}
+            .schema=${[{ name: "activity_commands", selector: { object: {} } }]}
+            .computeLabel=${this._label}
+            @value-changed=${(ev: CustomEvent) => this._extrasChanged(id, activity, ev.detail.value as Obj)}
+          ></ha-form>
+          <h4>${this._t("hooks")}</h4>
+          <ha-form
+            .hass=${this.hass}
+            .data=${{ on_start: activity.on_start ?? [], on_stop: activity.on_stop ?? [] }}
+            .schema=${[
+              { name: "on_start", selector: { action: {} } },
+              { name: "on_stop", selector: { action: {} } },
+            ]}
+            .computeLabel=${this._label}
+            @value-changed=${(ev: CustomEvent) => {
+              const v = ev.detail.value as Obj;
+              this._setActivity(id, { ...activity, on_start: v.on_start as unknown[], on_stop: v.on_stop as unknown[] });
+            }}
+          ></ha-form>`,
+      )}
+
+      ${this._cardDivider()}
       ${this._card(
         this._t("remote"),
         this._t("hint_remote"),
@@ -940,38 +998,62 @@ export class EasyAvControlRoomEditor extends LitElement {
         ></easy-av-control-remote-preview>`,
       )}
 
-      ${this._advanced(
-        this._t("hint_activity_advanced"),
-        html`<p class="ltek-hint">${this._t("activity_id_hint", { id })}</p>
-          <ha-form
-            .hass=${this.hass}
-            .data=${{
-              buttons: ((remote.buttons as unknown[] | undefined) ?? []).filter((b) => !isQuickSelect(b)),
-              activity_commands: activity.commands,
-            }}
-            .schema=${[
-              { name: "buttons", selector: { object: {} } },
-              { name: "activity_commands", selector: { object: {} } },
-            ]}
-            .computeLabel=${this._label}
-            @value-changed=${(ev: CustomEvent) => this._extrasChanged(id, activity, ev.detail.value as Obj)}
-          ></ha-form>
-          <h4>${this._t("hooks")}</h4>
-          <ha-form
-            .hass=${this.hass}
-            .data=${{ on_start: activity.on_start ?? [], on_stop: activity.on_stop ?? [] }}
-            .schema=${[
-              { name: "on_start", selector: { action: {} } },
-              { name: "on_stop", selector: { action: {} } },
-            ]}
-            .computeLabel=${this._label}
-            @value-changed=${(ev: CustomEvent) => {
-              const v = ev.detail.value as Obj;
-              this._setActivity(id, { ...activity, on_start: v.on_start as unknown[], on_stop: v.on_stop as unknown[] });
-            }}
-          ></ha-form>`,
+      ${this._panel(
+        `activity:${this._t("card_extra")}`,
+        "mdi:gesture-tap-box",
+        this._t("card_extra"),
+        this._t("hint_card_extra"),
+        html`<ha-form
+          .hass=${this.hass}
+          .data=${{ buttons: extraButtons, activity_commands: activity.commands }}
+          .schema=${[{ name: "buttons", selector: { object: {} } }]}
+          .computeLabel=${this._label}
+          @value-changed=${(ev: CustomEvent) => this._extrasChanged(id, activity, ev.detail.value as Obj)}
+        ></ha-form>`,
+        false,
       )}
     `;
+  }
+
+  /** The line that starts the Remote control card's settings. */
+  private _cardDivider(): TemplateResult {
+    return html`<div class="card-divider"><ha-icon icon="mdi:remote"></ha-icon>${this._t("card_divider")}</div>`;
+  }
+
+  /** An activity's devices as an ordered list (design guide): + Device on top, then numbered rows. */
+  private _renderActivityDevices(id: string, activity: Activity, devices: string[], chosen: string[]): TemplateResult {
+    const set = (list: string[]) => this._setActivity(id, { ...activity, devices: list });
+    const free = devices.filter((d) => !chosen.includes(d));
+    return html`<div class="ltek-list">
+      ${free.length
+        ? html`<select
+            class="ltek-add add-select"
+            aria-label=${this._t("add_device_to_activity")}
+            @change=${(ev: Event) => {
+              const el = ev.target as HTMLSelectElement;
+              if (el.value) set([...chosen, el.value]);
+              el.value = "";
+            }}
+          >
+            <option value="" selected>+ ${this._t("add_device_short")}</option>
+            ${free.map((d) => html`<option value=${d}>${this.room.devices?.[d]?.name ?? d}</option>`)}
+          </select>`
+        : nothing}
+      ${chosen.map((d, i) => {
+        const device = this.room.devices?.[d];
+        const platform = device?.entity_id ? this.hass.entities?.[device.entity_id]?.platform : undefined;
+        return html`<div class="ltek-item ordered-row">
+          <span class="num">${i + 1}</span>
+          <ha-icon class="lead" icon=${device ? this._deviceIcon(device) : "mdi:help-circle-outline"}></ha-icon>
+          <button class="ltek-item-text link" @click=${() => this._show({ kind: "device", id: d })}>
+            <span class="ltek-name">${device?.name ?? d}</span>
+            <span class="ltek-subline">${device?.entity_id ?? ""}</span>
+          </button>
+          ${platform ? html`<span class="ltek-badge">${integrationTitle(platform)}</span>` : nothing}
+          ${this._moveButtons(chosen, i, set)}
+        </div>`;
+      })}
+    </div>`;
   }
 
   /** Name, icon, position; a new activity takes its ID from its name. */
@@ -1008,6 +1090,7 @@ export class EasyAvControlRoomEditor extends LitElement {
         <span class="title">${index + 1}. ${this._t(`step.${step.type}`)}</span>
         ${this._moveButtons(steps, index, setSteps)}
       </div>
+      ${step.type === "wait_picture" ? this._pictureNote(step) : nothing}
       <ha-form
         .hass=${this.hass}
         .data=${step}
@@ -1020,6 +1103,23 @@ export class EasyAvControlRoomEditor extends LitElement {
         }}
       ></ha-form>
     </div>`;
+  }
+
+  /** What a Wait for a picture step watches, from the device's profile. */
+  private _pictureNote(step: Step): TemplateResult | typeof nothing {
+    const device = this.room.devices?.[String(step.device ?? "")];
+    if (!device?.entity_id) return nothing;
+    const detect = this._detectFor(device);
+    if (!detect) return nothing;
+    const entity = detect.found?.picture;
+    const picture = detect.profile?.data?.picture as Obj | undefined;
+    const states = ((picture?.ok as string[] | undefined) ?? []).join(` ${this._t("or")} `);
+    const name = device.name ?? device.entity_id;
+    return html`<p class="ltek-hint">
+      ${entity
+        ? this._t("step_picture_checks", { entity: (this.hass.states[entity]?.attributes.friendly_name as string) || entity, states })
+        : this._t("step_picture_none", { device: name })}
+    </p>`;
   }
 
   private _routesChanged(id: string, activity: Activity, v: Obj): void {
@@ -1261,11 +1361,9 @@ export class EasyAvControlRoomEditor extends LitElement {
 
     if (chosen === undefined) {
       return html`${mode}
-        <p class="ltek-hint">
-          ${fromDevices.length
-            ? this._t("settings_auto_shows", { list: fromDevices.map((s) => this._describeSetting(s, true)).join(", ") })
-            : this._t("settings_auto_none")}
-        </p>`;
+        ${fromDevices.length
+          ? this._settingColumns(fromDevices)
+          : html`<p class="ltek-hint">${this._t("settings_auto_none")}</p>`}`;
     }
 
     const devices = activity.devices ?? [];
@@ -1285,6 +1383,25 @@ export class EasyAvControlRoomEditor extends LitElement {
             + ${this._t("add_setting")}
           </button>`
         : nothing}`;
+  }
+
+  /** What the card shows, in a column per integration. */
+  private _settingColumns(settings: Obj[]): TemplateResult {
+    return html`<div class="ltek-group first">${this._t("card_shows")}</div>
+      <div class="columns">
+        ${byIntegration(this.hass, this.room, settings).map(([platform, list]) => {
+          const devices = new Set(list.map((s) => String(s.device)));
+          return html`<div class="column">
+            <div class="column-head">${platform ? integrationTitle(platform) : this._t("other_integration")}</div>
+            ${devices.size === 1
+              ? html`<div class="ltek-subline">${this.room.devices?.[[...devices][0]]?.name ?? [...devices][0]}</div>`
+              : nothing}
+            <ul>
+              ${list.map((s) => html`<li>${this._describeSetting(s, devices.size > 1)}</li>`)}
+            </ul>
+          </div>`;
+        })}
+      </div>`;
   }
 
   /** A device's settings in the card, for every activity that uses it. */
@@ -1679,6 +1796,109 @@ export class EasyAvControlRoomEditor extends LitElement {
       align-items: center;
       gap: var(--ltek-sp-2);
       margin-top: 32px;
+    }
+    /* Start of the Remote control card's settings */
+    .card-divider {
+      display: flex;
+      align-items: center;
+      gap: var(--ltek-sp-2);
+      margin: var(--ltek-sp-6) 0 var(--ltek-sp-1);
+      color: var(--ltek-c-muted);
+      font-size: var(--ltek-fs-small);
+      font-weight: var(--ltek-fw-semibold);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      --mdc-icon-size: 18px;
+    }
+    .card-divider::after {
+      content: "";
+      flex: 1;
+      border-top: 1px solid var(--divider-color);
+    }
+    /* An activity's devices: numbered raised rows */
+    .ordered-row .num {
+      flex: none;
+      min-width: 1.5em;
+      text-align: center;
+      color: var(--accent-color, var(--ltek-c-accent));
+      font-weight: var(--ltek-fw-semibold);
+      font-variant-numeric: tabular-nums;
+    }
+    .ordered-row .move {
+      gap: var(--ltek-sp-2);
+    }
+    button.ltek-item-text.link {
+      border: none;
+      background: none;
+      padding: 0;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+      color: inherit;
+    }
+    button.ltek-item-text.link:hover .ltek-name {
+      color: var(--ltek-c-accent);
+    }
+    select.add-select {
+      appearance: none;
+      -webkit-appearance: none;
+      align-self: flex-start;
+      width: auto;
+      padding: var(--ltek-ctrl-pad);
+      border: 1px dashed var(--ltek-c-accent);
+      border-radius: var(--ltek-r-ctrl);
+      background: transparent;
+      color: var(--ltek-c-accent);
+      font: inherit;
+      font-size: var(--ltek-fs-body);
+      font-weight: var(--ltek-fw-semibold);
+      cursor: pointer;
+    }
+    select.add-select:hover {
+      background: var(--ltek-c-accent-fade-soft);
+    }
+    select.add-select option {
+      color: var(--ltek-c-text);
+      background: var(--card-background-color);
+      font-weight: var(--ltek-fw-normal);
+    }
+    /* Settings in the card: a column per integration */
+    .columns {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: var(--ltek-sp-3);
+      margin-top: var(--ltek-sp-2);
+    }
+    .column {
+      background: var(--ltek-c-surface-raised);
+      border-radius: var(--ltek-r-card);
+      padding: var(--ltek-sp-2) var(--ltek-sp-3);
+    }
+    .column-head {
+      color: var(--accent-color, var(--ltek-c-accent));
+      font-weight: var(--ltek-fw-semibold);
+      font-size: var(--ltek-fs-label);
+    }
+    .column ul {
+      margin: var(--ltek-sp-1) 0 0;
+      padding-left: 1.1em;
+      font-size: var(--ltek-fs-body);
+    }
+    /* Power Outlet: off is greyed out */
+    label.check {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--ltek-sp-2);
+      color: var(--ltek-c-label);
+      font-size: var(--ltek-fs-body);
+      margin-bottom: var(--ltek-sp-2);
+    }
+    label.check input {
+      accent-color: var(--ltek-c-accent);
+    }
+    .unused {
+      opacity: 0.45;
+      pointer-events: none;
     }
     .detail-head .ltek-btn {
       display: inline-flex;

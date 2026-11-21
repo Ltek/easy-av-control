@@ -1,5 +1,26 @@
 # Changelog
 
+## v2026.11.21.11
+
+**Added**
+- **Activities in the left menu**, under their room. A click opens the activity; the icon beside it opens it
+  at its Flow.
+- **Power Outlet** (was "Power") has a checkbox. Unticked, the outlet and its boot time are greyed out and not
+  used; ticking it again brings back the outlet it had.
+- **Wait for a picture** says what it waits for (e.g. "Waits until Lumagen Input video status shows Active Video
+  or Test Pattern"), or that the device has no picture check.
+
+**Changed**
+- An activity's **Devices** are a design-guide ordered list: + Device on top, numbered rows with the device's
+  icon, entity, integration, move and delete. A click on a device opens it.
+- **Settings in the card** lists what the card shows in a column per integration.
+- Everything for the Remote control card sits under a **Remote control card** line at the bottom of the
+  activity page (buttons, quick select, settings in the card, preview, extra buttons) and of the device page
+  (settings in the card). Extra buttons have their own panel; Advanced keeps commands and actions.
+- **Flow:** each device's number and name are in the theme's accent colour, the times in its active-state
+  icon colour.
+- "Start sequence" is now **Steps after power-on**, with a clearer explanation.
+
 ## v2026.11.21.10
 
 **Fixed**

@@ -13,7 +13,7 @@ import "./panel/guide";
 import { REPO, ltekChrome, ltekTokens } from "./panel/ltek-styles";
 import "./panel/profiles";
 import "./panel/room-editor";
-import { clean, slugify, uniqueKey, type Room, type Rooms, type Sources } from "./panel/model";
+import { clean, slugify, sortedActivities, uniqueKey, type Room, type Rooms, type Sources } from "./panel/model";
 import { t } from "./panel/strings";
 import type { HomeAssistant } from "./types";
 
@@ -64,6 +64,8 @@ export class EasyAvControlPanel extends LitElement {
     _draftFor: { state: true },
     _focusProfile: { state: true },
     _version: { state: true },
+    _jump: { state: true },
+    _openActivity: { state: true },
   };
 
   declare hass: HomeAssistant;
@@ -86,6 +88,10 @@ export class EasyAvControlPanel extends LitElement {
   /** A profile to show on the Profiles page (from a Detected Devices chip) */
   declare _focusProfile?: string;
   declare _version?: string;
+  /** Tells the room editor to open an activity (from the menu) */
+  declare _jump?: { activity: string; flow: boolean; n: number };
+  /** The activity the room editor shows, to mark it in the menu */
+  declare _openActivity?: string;
 
   private _entryId?: string;
   private _revision?: string;
@@ -328,7 +334,25 @@ export class EasyAvControlPanel extends LitElement {
             }}
           >
             ${room.name ?? id}
-          </button>`,
+          </button>
+          ${sortedActivities(room).map(
+            ([aid, activity]) => html`<div
+              class="nav-activity ${this._page === "room" && id === selected && this._openActivity === aid ? "active" : ""}"
+            >
+              <button class="nav-act-name" @click=${() => this._goActivity(id, aid, false)}>
+                <ha-icon icon=${activity.icon ?? "mdi:play-circle-outline"}></ha-icon>
+                <span>${activity.name ?? aid}</span>
+              </button>
+              <button
+                class="ltek-act nav-flow"
+                title=${this._t("nav_flow")}
+                aria-label=${this._t("nav_flow")}
+                @click=${() => this._goActivity(id, aid, true)}
+              >
+                <ha-icon icon="mdi:sitemap-outline"></ha-icon>
+              </button>
+            </div>`,
+          )}`,
         )}
         ${this._renderAddRoom()}
         <div class="nav-title library">${this._t("setup")}</div>
@@ -389,10 +413,22 @@ export class EasyAvControlPanel extends LitElement {
                 .profiles=${this._profiles}
                 @room-changed=${(ev: CustomEvent<{ room: Room }>) => this._roomChanged(selected, ev.detail.room)}
                 @delete-room=${() => this._deleteRoom(selected)}
+                .jump=${this._jump}
+                @view-changed=${(ev: CustomEvent<{ view: { kind: string; id?: string } }>) => {
+                  const view = ev.detail.view;
+                  this._openActivity = view.kind === "activity" ? view.id : undefined;
+                }}
               ></easy-av-control-room-editor>`
           : html`<div class="empty">${this._t("no_rooms")}</div>`}
       </main>
     </div>`;
+  }
+
+  /** Open an activity of a room from the menu, at its Flow when ``flow``. */
+  private _goActivity(room: string, activity: string, flow: boolean): void {
+    this._selected = room;
+    this._page = "room";
+    this._jump = { activity, flow, n: (this._jump?.n ?? 0) + 1 };
   }
 
   private _renderBanner(): TemplateResult | typeof nothing {
@@ -647,6 +683,55 @@ export class EasyAvControlPanel extends LitElement {
       background: var(--ltek-c-accent-fade);
       border-color: var(--ltek-c-accent);
       color: var(--ltek-c-text);
+    }
+    /* A room's activities, under it in the menu; the icon on the right opens the Flow */
+    .nav-activity {
+      display: flex;
+      align-items: center;
+      gap: var(--ltek-sp-1);
+      margin-left: var(--ltek-sp-4);
+      padding-right: var(--ltek-sp-2);
+      border-radius: var(--ltek-r-ctrl);
+      border: 1px solid transparent;
+    }
+    .nav-activity:hover {
+      background: var(--ltek-c-accent-fade-soft);
+    }
+    .nav-activity.active {
+      border-color: var(--ltek-c-accent);
+      background: var(--ltek-c-accent-fade);
+    }
+    .nav-act-name {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: var(--ltek-sp-2);
+      border: none;
+      background: none;
+      padding: 6px 8px;
+      font: inherit;
+      font-size: var(--ltek-fs-body);
+      color: var(--ltek-c-text);
+      text-align: left;
+      cursor: pointer;
+      --mdc-icon-size: 18px;
+    }
+    .nav-act-name ha-icon {
+      color: var(--accent-color, var(--ltek-c-accent));
+      flex: none;
+    }
+    .nav-act-name span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    button.nav-flow {
+      --mdc-icon-size: 18px;
+      color: var(--ltek-c-accent);
+    }
+    .layout.narrow .nav-activity {
+      margin-left: 0;
     }
     button.room.add {
       border: 1px dashed var(--ltek-c-accent);
