@@ -31,6 +31,7 @@ from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    CHECK_PICTURE,
     CHECK_TURN_OFF,
     CHECK_TURN_ON,
     CONF_ATTRIBUTE,
@@ -38,7 +39,9 @@ from .const import (
     CONF_DEBOUNCE,
     CONF_ENTITY_ID,
     CONF_ON_FAILURE,
+    CONF_STATE,
     CONF_STATE_SOURCE,
+    CONF_TIMEOUT,
     CONF_TIMEOUT_OFF,
     CONF_TIMEOUT_ON,
     CONF_WAIT_OFF,
@@ -61,6 +64,10 @@ from .device_profiles import (
     resolve,
 )
 from .profile_library import profile_for_device
+
+# A check on an entity of your own: how long its state must hold, and how long to wait for it
+DEFAULT_CHECK_DEBOUNCE = 2.0
+DEFAULT_CHECK_TIMEOUT = 30.0
 
 RESULT_OK = "ok"
 RESULT_ERROR = "error"
@@ -138,10 +145,33 @@ def picture_source(
     entity = resolve(hass, profile, device[CONF_ENTITY_ID]).picture_entity
     if entity is None:
         return None
-    indicator: dict[str, Any] = {"on": list(picture["ok"])}
+    indicator: dict[str, Any] = (
+        {"on": list(picture["ok"]), "off": list(picture["fail"])} if picture["ok"] else {"on_unless": list(picture["fail"])}
+    )
     if picture.get("attribute"):
         indicator[CONF_ATTRIBUTE] = picture["attribute"]
     return StateSource(entity, indicator, debounce=picture["debounce"], profile_id=profile.id), picture["timeout"]
+
+
+def check_source(
+    hass: HomeAssistant, profiles: dict[str, Profile], device: dict[str, Any], check: dict[str, Any]
+) -> tuple[StateSource, float] | None:
+    """What an activity's check watches, with its timeout: its own entity and values, else the device's
+    picture check from its profile; None when there is nothing to watch."""
+    if check.get(CONF_ENTITY_ID):
+        indicator = {"on": list(check.get(CONF_STATE) or ["on"])}
+        source = StateSource(check[CONF_ENTITY_ID], indicator, debounce=check.get(CONF_DEBOUNCE, DEFAULT_CHECK_DEBOUNCE))
+        return source, check.get(CONF_TIMEOUT, DEFAULT_CHECK_TIMEOUT)
+    found = picture_source(hass, profiles, device)
+    if found is None:
+        return None
+    source, timeout = found
+    return source, check.get(CONF_TIMEOUT, timeout)
+
+
+def check_failure(device: dict[str, Any], check: dict[str, Any]) -> str:
+    """What a failed check does: its own choice, else the device's for a missing picture (warn by default)."""
+    return check.get(CONF_ON_FAILURE) or failure_action(device, CHECK_PICTURE)
 
 
 def wait_mode(device: dict[str, Any], source: StateSource | None, *, on: bool) -> str:

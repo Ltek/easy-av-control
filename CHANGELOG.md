@@ -1,5 +1,21 @@
 # Changelog
 
+## v2026.11.21.12
+
+**Added**
+- **Checks** on every activity: what must be right before the activity counts as running, e.g. a picture on the
+  Lumagen and on the projector. They run at the same time once every device is on, before the actions after
+  start, and also when switching to the activity from another. A check uses the device's picture check from its
+  profile, or an entity of your own and the values that mean it's right. Each has a timeout and "if it isn't
+  right": warn and go on (default) or stop the activity. The Flow shows them as their own block.
+- **JVC projector profile: picture check.** Source Display showing a resolution means a picture; *no signal* and
+  *out of range* mean none. A profile's picture check can now list only the values that mean no picture.
+
+**Changed**
+- **Wait for a picture is no longer a step.** Existing Wait for a picture steps become checks when Home
+  Assistant starts (config entry 2.2), with the same timeout. Detect integrations adds checks instead of steps.
+- "Steps after power-on" is now **Actions after start**: only actions, run once the checks passed.
+
 ## v2026.11.21.11
 
 **Added**

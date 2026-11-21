@@ -9,6 +9,8 @@ Version history
    checks and the switch-off delay live in reusable device profiles,
    activities list the devices they power on, steps are flat and refer to
    devices by key. Free-form HA actions go into ``on_start`` / ``on_stop``.
+2.2 Wait-for-a-picture steps move to the activity's ``checks``: they check
+   that the system works, they don't act.
 
 The migration only converts data, it never drops any: keys it does not know
 are carried over unchanged so that validation can point them out later.
@@ -16,8 +18,8 @@ are carried over unchanged so that validation can point them out later.
 from __future__ import annotations
 
 import copy
-import uuid
 from typing import Any
+import uuid
 
 from .const import (
     CONF_ACTION,
@@ -55,6 +57,7 @@ from .const import (
     STEP_TYPE_SET_TILT,
     STEP_TYPE_SET_VOLUME,
 )
+from .model import move_picture_steps
 
 # v1 ran these steps without their entity (if any); v2 does not allow one
 _STEPS_WITHOUT_DEVICE = (STEP_TYPE_CALL_ACTION, STEP_TYPE_DELAY)
@@ -75,6 +78,18 @@ _V1_IS_VOLUME_CONTROLLER = "is_volume_controller"
 _V1_DEFAULT_POWER_ON_DELAY = 2
 
 _DELAY_AFTER = "delay_after"
+
+
+def migrate_checks(data: dict[str, Any]) -> dict[str, Any]:
+    """Return a 2.2 copy of 2.1 entry data: picture steps become checks."""
+    out = copy.deepcopy(data)
+    for room in (out.get(CONF_ROOMS) or {}).values():
+        activities = room.get(CONF_ACTIVITIES)
+        if isinstance(activities, dict):
+            for key, activity in activities.items():
+                if isinstance(activity, dict):
+                    activities[key] = move_picture_steps(activity)
+    return out
 
 
 def migrate_v1_to_v2(data: dict[str, Any]) -> dict[str, Any]:

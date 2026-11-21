@@ -35,6 +35,7 @@ from homeassistant.util import slugify
 from .const import (
     CONF_ACTIVITIES,
     CONF_AREA_ID,
+    CONF_CHECKS,
     CONF_COMMANDS,
     CONF_DEVICE,
     CONF_DEVICES,
@@ -45,11 +46,9 @@ from .const import (
     CONF_POWER_SWITCH,
     CONF_REMOTE_ENTITY,
     CONF_ROOMS,
-    CONF_STEPS,
     CONF_TYPE,
     DOMAIN,
     STEP_TYPE_CALL_ACTION,
-    STEP_TYPE_WAIT_PICTURE,
 )
 from .device_profiles import (
     ORDER_EARLY,
@@ -386,10 +385,11 @@ def _insert(hass: HomeAssistant, profiles: dict[str, Profile], room: dict[str, A
     return [*order[:at], key, *order[at:]]
 
 
-def _with_picture(steps: list[dict[str, Any]], key: str) -> list[dict[str, Any]]:
-    if any(s.get(CONF_TYPE) == STEP_TYPE_WAIT_PICTURE and s.get(CONF_DEVICE) == key for s in steps):
-        return steps
-    return [*steps, {CONF_TYPE: STEP_TYPE_WAIT_PICTURE, CONF_DEVICE: key}]
+def _with_picture(checks: list[dict[str, Any]], key: str) -> list[dict[str, Any]]:
+    """The activity's checks with the device's picture check added (once)."""
+    if any(c.get(CONF_DEVICE) == key and not c.get(CONF_ENTITY_ID) for c in checks):
+        return checks
+    return [*checks, {CONF_DEVICE: key}]
 
 
 def starter_activity(
@@ -399,11 +399,11 @@ def starter_activity(
     processors early, audio in the middle, sources last) and a picture check for each device that has one."""
     devices = room[CONF_DEVICES]
     ordered = sorted(members, key=lambda k: (rank(hass, profiles, devices[k]), k))
-    steps: list[dict[str, Any]] = []
+    checks: list[dict[str, Any]] = []
     for member in ordered:
         if member in pictures:
-            steps = _with_picture(steps, member)
-    return {CONF_NAME: room.get(CONF_NAME) or "On", "order": 1, CONF_DEVICES: ordered, CONF_STEPS: steps}
+            checks = _with_picture(checks, member)
+    return {CONF_NAME: room.get(CONF_NAME) or "On", "order": 1, CONF_DEVICES: ordered, CONF_CHECKS: checks}
 
 
 def apply_detect(
@@ -448,7 +448,7 @@ def apply_detect(
                 continue
             activity[CONF_DEVICES] = _insert(hass, profiles, room, list(activity.get(CONF_DEVICES) or []), key)
             if item.get("picture"):
-                activity[CONF_STEPS] = _with_picture(list(activity.get(CONF_STEPS) or []), key)
+                activity[CONF_CHECKS] = _with_picture(list(activity.get(CONF_CHECKS) or []), key)
 
     # One new activity per room that has none yet, with the devices selected for it
     if choices.get("starter"):

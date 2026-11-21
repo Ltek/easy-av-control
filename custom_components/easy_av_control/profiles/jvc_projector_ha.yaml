@@ -15,6 +15,12 @@ remote: {domain: remote}
 settings:
   - {domain: select, translation_key: jvc_input_select}
   - {domain: select, translation_key: jvc_picture_mode}
+# Source Display shows the incoming resolution (1080p24, 4k_3840_60 …), or no_signal / out_of_range
+picture:
+  entity: {domain: sensor, translation_key: jvc_source_display}
+  fail: [no_signal, out_of_range]
+  debounce: 3
+  timeout: 45
 timeouts: {"on": 120, "off": 300}
 debounce: 2
 order: early

@@ -106,6 +106,7 @@ from .const import (
     CONF_AREA_ID,
     CONF_ATTRIBUTE,
     CONF_BRIGHTNESS_PCT,
+    CONF_CHECKS,
     CONF_COLOR_TEMP_KELVIN,
     CONF_COMMANDS,
     CONF_DATA,
@@ -181,6 +182,8 @@ from .device_state import (
     RESULT_OK,
     StateSource,
     async_wait_for,
+    check_failure,
+    check_source,
     describe_failure,
     effective_source,
     failure_action,
@@ -994,6 +997,7 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         devices: dict[str, Any] = room[CONF_DEVICES]
         new_devices: list[str] = activity[CONF_DEVICES]
         steps: list[dict[str, Any]] = activity[CONF_STEPS]
+        checks: list[dict[str, Any]] = activity.get(CONF_CHECKS) or []
         context = Context()
 
         previous = rt.activity if rt.activity != activity_id else None
@@ -1008,7 +1012,7 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         rt.state = ACTIVITY_STATE_STARTING
         rt.error = None
         rt.warnings = []
-        total = len(new_devices) + len(steps)
+        total = len(new_devices) + len(checks) + len(steps)
         rt.progress = (0, total)
         ir.async_delete_issue(self.hass, DOMAIN, self._aborted_issue_id(room_id))
         self._changed()
@@ -1080,6 +1084,13 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     )
                 await self._async_bring_up(rt, device, context)
                 done += 1
+                rt.progress = (done, total)
+                self.async_update_listeners()
+
+            # Checks: everything is on; is it working (a picture on the Lumagen, on the projector)?
+            if checks:
+                await self._async_run_checks(rt, room, checks)
+                done += len(checks)
                 rt.progress = (done, total)
                 self.async_update_listeners()
 
@@ -1352,6 +1363,35 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if turn_on and mode != WAIT_STATUS and device[CONF_DELAY_AFTER_ON]:
             self._doing(rt, "warm_up", name=name, seconds=device[CONF_DELAY_AFTER_ON])
             await self._async_sleep(device[CONF_DELAY_AFTER_ON])
+
+    async def _async_run_checks(self, rt: RoomRuntime, room: dict[str, Any], checks: list[dict[str, Any]]) -> None:
+        """Run an activity's checks, all at once. A failed one warns, or with on_failure stop aborts the start."""
+        self._doing(rt, "checks", count=len(checks))
+        results = await asyncio.gather(
+            *(self._async_check(room[CONF_DEVICES][check[CONF_DEVICE]], check) for check in checks),
+            return_exceptions=True,
+        )
+        for result in results:
+            if isinstance(result, BaseException):
+                raise result
+
+    async def _async_check(self, device: dict[str, Any], check: dict[str, Any]) -> None:
+        """Wait until one check is right (debounced), at most its timeout."""
+        found = check_source(self.hass, self.profiles, device, check)
+        name = self._device_name(device)
+        if found is None:
+            self._warn(f"{name} has no picture check: pick an entity for its check")
+            return
+        source, timeout = found
+        result, value = await async_wait_for(self.hass, source, GROUP_ON, timeout)
+        if result == RESULT_OK:
+            return
+        shown = f", it shows {value}" if value else ""
+        what = "no picture" if not check.get(CONF_ENTITY_ID) else f"{source.entity_id} is not right"
+        message = f"{name}: {what} after {timeout:g} s{shown}"
+        if check_failure(device, check) == FAILURE_STOP:
+            raise ActivityAborted(message)
+        self._warn(message)
 
     async def _async_wait_picture(self, device: dict[str, Any], step: dict[str, Any]) -> None:
         """Wait until the device shows a picture; a device without a picture check has nothing to wait for."""

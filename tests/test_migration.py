@@ -8,6 +8,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 
+from .common import living_room
 from custom_components.easy_av_control.const import DOMAIN
 from custom_components.easy_av_control.migration import migrate_v1_to_v2
 from custom_components.easy_av_control.model import validate_config
@@ -316,7 +317,7 @@ async def test_async_migrate_entry(hass: HomeAssistant) -> None:
 
     assert entry.state is ConfigEntryState.LOADED
     assert entry.version == 2
-    assert entry.minor_version == 1
+    assert entry.minor_version == 2
     assert entry.data == migrate_v1_to_v2(V1_DATA)
     assert entry.data["rooms"]["wohnzimmer"]["devices"]["epson_beamer"] == {
         "entity_id": "media_player.epson_beamer",
@@ -342,3 +343,19 @@ async def test_current_entry_not_migrated(hass: HomeAssistant) -> None:
 
     assert await hass.config_entries.async_setup(entry.entry_id)
     assert entry.data == data
+
+
+async def test_picture_steps_move_to_checks_on_setup(hass: HomeAssistant, devices) -> None:
+    """A 2.1 entry with a wait_picture step comes up as 2.2 with the step as a check."""
+    data = living_room()
+    activity = next(iter(data["rooms"]["wz"]["activities"].values()))
+    device = activity["devices"][0]
+    activity["steps"] = [*(activity.get("steps") or []), {"type": "wait_picture", "device": device}]
+    entry = MockConfigEntry(domain=DOMAIN, version=2, minor_version=1, data=data)
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    assert entry.minor_version == 2
+    moved = next(iter(entry.data["rooms"]["wz"]["activities"].values()))
+    assert moved["checks"] == [{"device": device}]
+    assert all(step["type"] != "wait_picture" for step in moved["steps"])

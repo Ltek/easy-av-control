@@ -63,6 +63,7 @@ from .const import (
     CONF_AVAILABLE_IS_ON,
     CONF_BRIGHTNESS_PCT,
     CONF_BUTTONS,
+    CONF_CHECKS,
     CONF_COLOR_TEMP_KELVIN,
     CONF_COMMAND,
     CONF_COMMANDS,
@@ -114,6 +115,8 @@ from .const import (
     DEFAULT_READY_TIMEOUT,
     DOMAIN,
     FAILURE_ACTIONS,
+    FAILURE_STOP,
+    FAILURE_WARN,
     ON_TIMEOUT_ABORT,
     ON_TIMEOUT_OPTIONS,
     SETTING_ENTITY_DOMAINS,
@@ -342,6 +345,37 @@ def _step(value: Any) -> dict[str, Any]:
     return schema(value)
 
 
+CHECK_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_DEVICE): _KEY,
+        # Without an entity: the device's picture check from its profile
+        vol.Optional(CONF_ENTITY_ID): cv.entity_id,
+        vol.Optional(CONF_STATE): _STATES,
+        vol.Optional(CONF_TIMEOUT): vol.All(vol.Coerce(float), vol.Range(min=1, max=3600)),
+        vol.Optional(CONF_DEBOUNCE): _SECONDS,
+        vol.Optional(CONF_ON_FAILURE): vol.In([FAILURE_WARN, FAILURE_STOP]),
+    }
+)
+
+
+def move_picture_steps(activity: dict[str, Any]) -> dict[str, Any]:
+    """Wait-for-a-picture steps (before 2026.11.21.12) become checks: they check, they don't act."""
+    steps = activity.get(CONF_STEPS)
+    if not isinstance(steps, list) or not any(
+        isinstance(s, dict) and s.get(CONF_TYPE) == STEP_TYPE_WAIT_PICTURE for s in steps
+    ):
+        return activity
+    checks = list(activity.get(CONF_CHECKS) or [])
+    kept = []
+    for step in steps:
+        if isinstance(step, dict) and step.get(CONF_TYPE) == STEP_TYPE_WAIT_PICTURE:
+            if step.get(CONF_DEVICE) and not any(c.get(CONF_DEVICE) == step[CONF_DEVICE] and not c.get(CONF_ENTITY_ID) for c in checks):
+                checks.append({CONF_DEVICE: step[CONF_DEVICE], **({CONF_TIMEOUT: step[CONF_TIMEOUT]} if CONF_TIMEOUT in step else {})})
+        else:
+            kept.append(step)
+    return {**activity, CONF_STEPS: kept, CONF_CHECKS: checks}
+
+
 def _button(value: Any) -> dict[str, Any]:
     """A remote button: a command name, optionally with label and icon.
 
@@ -383,12 +417,13 @@ REMOTE_SCHEMA = vol.Schema(
     }
 )
 
-ACTIVITY_SCHEMA = vol.Schema(
+_ACTIVITY_FIELDS = vol.Schema(
     {
         vol.Optional(CONF_NAME): str,
         vol.Optional(CONF_ICON): cv.icon,
         vol.Optional(CONF_ORDER): vol.Coerce(int),
         vol.Optional(CONF_DEVICES, default=list): [_KEY],
+        vol.Optional(CONF_CHECKS, default=list): [CHECK_SCHEMA],
         vol.Optional(CONF_STEPS, default=list): [_step],
         # Validated in depth by async_validate_config (needs hass)
         vol.Optional(CONF_ON_START, default=list): vol.Any(None, [dict]),
@@ -397,6 +432,14 @@ ACTIVITY_SCHEMA = vol.Schema(
         vol.Optional(CONF_COMMANDS, default=dict): _COMMANDS,
     }
 )
+
+
+def _activity(value: Any) -> dict[str, Any]:
+    return _ACTIVITY_FIELDS(move_picture_steps(value) if isinstance(value, dict) else value)
+
+
+ACTIVITY_SCHEMA = _activity
+
 
 ROOM_SCHEMA = vol.Schema(
     {
@@ -437,6 +480,12 @@ def _check_references(rooms: dict[str, Any]) -> None:
                 if device not in devices:
                     raise vol.Invalid(
                         f"unknown device '{device}'", path=[*base, CONF_DEVICES, idx]
+                    )
+            for idx, check in enumerate(activity[CONF_CHECKS]):
+                if check[CONF_DEVICE] not in devices:
+                    raise vol.Invalid(
+                        f"unknown device '{check[CONF_DEVICE]}'",
+                        path=[*base, CONF_CHECKS, idx, CONF_DEVICE],
                     )
             for idx, step in enumerate(activity[CONF_STEPS]):
                 device = step.get(CONF_DEVICE)
@@ -597,6 +646,13 @@ def iter_entity_references(data: dict[str, Any]):
                     room_id, f"{base}.ready.entity_id", device[CONF_READY][CONF_ENTITY_ID]
                 )
         for activity_id, activity in (room.get(CONF_ACTIVITIES) or {}).items():
+            for idx, check in enumerate(activity.get(CONF_CHECKS) or []):
+                if check.get(CONF_ENTITY_ID):
+                    yield EntityReference(
+                        room_id,
+                        f"activities.{activity_id}.checks[{idx}].entity_id",
+                        check[CONF_ENTITY_ID],
+                    )
             for idx, step in enumerate(activity.get(CONF_STEPS) or []):
                 if step.get(CONF_ENTITY_ID):
                     yield EntityReference(

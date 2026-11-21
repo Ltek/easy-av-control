@@ -42,6 +42,9 @@ activities:
     icon: mdi:television-classic
     order: 1
     devices: [receiver, projector, sat]
+    # The projector must show its input before the activity counts as running
+    checks:
+      - {device: projector, entity_id: media_player.projector, state: ["on"], timeout: 30}
     steps:
       - {type: set_source, device: receiver, source: SAT}
       - {type: set_sound_mode, device: receiver, sound_mode: DTS:X}

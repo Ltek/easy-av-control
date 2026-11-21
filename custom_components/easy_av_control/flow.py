@@ -21,6 +21,7 @@ from homeassistant.core import HomeAssistant
 
 from .const import (
     CONF_ACTIVITIES,
+    CONF_CHECKS,
     CONF_DELAY_AFTER_OFF,
     CONF_DELAY_AFTER_ON,
     CONF_DELAY_AFTER_POWER,
@@ -46,7 +47,13 @@ from .const import (
 )
 from .control import action_names
 from .coordinator import can_switch, power_service, power_switches, step_service
-from .device_state import effective_source, picture_source, wait_mode
+from .device_state import (
+    check_failure,
+    check_source,
+    effective_source,
+    picture_source,
+    wait_mode,
+)
 from .device_timings import typical_of
 from .model import CONF_DELAY_AFTER
 from .profile_library import profiles_of
@@ -274,7 +281,8 @@ def plan_start(
             )
             clock.wait(device[CONF_DELAY_AFTER_ON])
 
-    # Steps
+    # Checks, all at once, then the steps
+    rows.extend(_check_rows(hass, room, activity, clock))
     rows.extend(_step_rows(hass, room, activity, clock))
 
     if hook is not None:
@@ -297,6 +305,36 @@ def plan_start(
         rows.append(row)
 
     return {"rows": rows, "done": done}
+
+
+def _check_rows(
+    hass: HomeAssistant, room: dict[str, Any], activity: dict[str, Any], clock: _Clock
+) -> list[dict[str, Any]]:
+    checks: list[dict[str, Any]] = activity.get(CONF_CHECKS) or []
+    if not checks:
+        return []
+    rows: list[dict[str, Any]] = [{"kind": "checks", "at": clock.at, "count": len(checks)}]
+    longest = 0.0
+    for index, check in enumerate(checks, 1):
+        device = room[CONF_DEVICES][check[CONF_DEVICE]]
+        found = check_source(hass, profiles_of(hass), device, check)
+        row: dict[str, Any] = {"kind": "check", "at": clock.at, "check": index, "device": check[CONF_DEVICE]}
+        if found is None:
+            row["missing"] = True
+        else:
+            source, timeout = found
+            longest = max(longest, timeout)
+            row.update(
+                entity_id=source.entity_id,
+                states=source.indicator.get("on") or [],
+                unless=source.indicator.get("on_unless") or [],
+                timeout=timeout,
+                on_failure=check_failure(device, check),
+            )
+        rows.append(row)
+    # They run at the same time: the longest timeout counts
+    clock.wait_up_to(longest)
+    return rows
 
 
 def _step_rows(

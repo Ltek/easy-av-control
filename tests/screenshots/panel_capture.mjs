@@ -146,6 +146,9 @@ await shotBoth('activity');
 await page.locator('easy-av-control-room-editor summary', { hasText: /Devices/ }).click();
 await settle(800);
 await shotBoth('activity-devices');
+await page.locator('easy-av-control-room-editor summary', { hasText: 'Checks' }).click();
+await settle(1200);
+await shotBoth('activity-checks');
 
 // The menu's Flow icon opens the activity at its Flow
 await page.locator('easy-av-control-panel button.nav-flow').first().click();

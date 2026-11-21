@@ -82,6 +82,7 @@ const CARD_ICONS: Record<string, string> = {
   card_settings: "mdi:tune-vertical",
   section_general: "mdi:information-outline",
   section_activity_devices: "mdi:format-list-numbered",
+  section_checks: "mdi:check-decagram-outline",
   steps: "mdi:playlist-play",
   remote: "mdi:remote",
   quick_select: "mdi:gesture-tap-button",
@@ -910,6 +911,8 @@ export class EasyAvControlRoomEditor extends LitElement {
         this._renderActivityDevices(id, activity, devices, chosen),
       )}
 
+      ${this._card(this._t("section_checks"), this._t("hint_checks"), this._renderChecks(id, activity))}
+
       ${this._card(
         this._t("steps"),
         this._t("hint_steps"),
@@ -1090,7 +1093,6 @@ export class EasyAvControlRoomEditor extends LitElement {
         <span class="title">${index + 1}. ${this._t(`step.${step.type}`)}</span>
         ${this._moveButtons(steps, index, setSteps)}
       </div>
-      ${step.type === "wait_picture" ? this._pictureNote(step) : nothing}
       <ha-form
         .hass=${this.hass}
         .data=${step}
@@ -1105,21 +1107,122 @@ export class EasyAvControlRoomEditor extends LitElement {
     </div>`;
   }
 
-  /** What a Wait for a picture step watches, from the device's profile. */
-  private _pictureNote(step: Step): TemplateResult | typeof nothing {
-    const device = this.room.devices?.[String(step.device ?? "")];
+  /** What a check on a device's profile watches, or that it has nothing to watch. */
+  private _checkNote(deviceId: string): TemplateResult | typeof nothing {
+    const device = this.room.devices?.[deviceId];
     if (!device?.entity_id) return nothing;
     const detect = this._detectFor(device);
     if (!detect) return nothing;
     const entity = detect.found?.picture;
     const picture = detect.profile?.data?.picture as Obj | undefined;
-    const states = ((picture?.ok as string[] | undefined) ?? []).join(` ${this._t("or")} `);
-    const name = device.name ?? device.entity_id;
+    const ok = (picture?.ok as string[] | undefined) ?? [];
+    const fail = (picture?.fail as string[] | undefined) ?? [];
+    const name = entity ? (this.hass.states[entity]?.attributes.friendly_name as string) || entity : "";
     return html`<p class="ltek-hint">
-      ${entity
-        ? this._t("step_picture_checks", { entity: (this.hass.states[entity]?.attributes.friendly_name as string) || entity, states })
-        : this._t("step_picture_none", { device: name })}
+      ${!entity
+        ? this._t("step_picture_none", { device: device.name ?? device.entity_id })
+        : ok.length
+          ? this._t("step_picture_checks", { entity: name, states: ok.join(` ${this._t("or")} `) })
+          : this._t("check_unless_text", { entity: name, states: fail.join(` ${this._t("or")} `) })}
     </p>`;
+  }
+
+  /** An activity's checks: + Check on top, then one raised box each. */
+  private _renderChecks(id: string, activity: Activity): TemplateResult {
+    const checks = (activity.checks as Obj[] | undefined) ?? [];
+    const set = (list: Obj[]) => this._setActivity(id, { ...activity, checks: list.length ? list : undefined });
+    const chosen = activity.devices ?? [];
+    const withPicture = chosen.filter((d) => {
+      const device = this.room.devices?.[d];
+      return device?.entity_id && this._detectFor(device)?.found?.picture;
+    });
+    const first = withPicture.find((d) => !checks.some((c) => c.device === d && !c.entity_id)) ?? chosen[0];
+    return html`<div class="ltek-list">
+      ${chosen.length
+        ? html`<button class="ltek-add" @click=${() => set([...checks, { device: first }])}>+ ${this._t("add_check")}</button>`
+        : html`<p class="ltek-hint">${this._t("needs_devices")}</p>`}
+      ${checks.length ? nothing : html`<p class="ltek-hint">${this._t("check_none")}</p>`}
+      ${checks.map((check, i) => {
+        const update = (patch: Obj) => {
+          const list = [...checks];
+          list[i] = clean({ ...check, ...patch });
+          set(list);
+        };
+        const own = check.entity_id !== undefined;
+        const device = String(check.device ?? "");
+        const states = (check.state as string[] | string | undefined) ?? [];
+        return html`<div class="step check">
+          <div class="step-head">
+            <span class="title"><span class="num">${i + 1}</span> ${this.room.devices?.[device]?.name ?? device}</span>
+            ${this._moveButtons(checks, i, set)}
+          </div>
+          <div class="ltek-row">
+            <label class="lbl">${this._t("field.device")}</label>
+            <select @change=${(ev: Event) => update({ device: (ev.target as HTMLSelectElement).value })}>
+              ${chosen.map((d) => html`<option value=${d} ?selected=${d === device}>${this.room.devices?.[d]?.name ?? d}</option>`)}
+            </select>
+          </div>
+          <div class="ltek-row">
+            <label class="lbl">${this._t("check_what")}</label>
+            <select
+              @change=${(ev: Event) =>
+                (ev.target as HTMLSelectElement).value === "own"
+                  ? update({ entity_id: "", state: ["on"] })
+                  : update({ entity_id: undefined, state: undefined, debounce: undefined })}
+            >
+              <option value="profile" ?selected=${!own}>${this._t("check_profile")}</option>
+              <option value="own" ?selected=${own}>${this._t("check_entity")}</option>
+            </select>
+          </div>
+          ${own
+            ? html`<ha-form
+                  .hass=${this.hass}
+                  .data=${{ entity_id: check.entity_id || undefined }}
+                  .schema=${[{ name: "entity_id", selector: { entity: {} } }]}
+                  .computeLabel=${() => this._t("check_entity_label")}
+                  @value-changed=${(ev: CustomEvent) => update({ entity_id: ((ev.detail.value as Obj).entity_id as string) ?? "" })}
+                ></ha-form>
+                <div class="ltek-row">
+                  <label class="lbl">${this._t("check_states")}</label>
+                  <input
+                    type="text"
+                    .value=${(Array.isArray(states) ? states : [states]).join(", ")}
+                    placeholder=${this._t("check_states_placeholder")}
+                    @change=${(ev: Event) => {
+                      const list = (ev.target as HTMLInputElement).value.split(",").map((v) => v.trim()).filter(Boolean);
+                      update({ state: list.length ? list : undefined });
+                    }}
+                  />
+                </div>`
+            : this._checkNote(device)}
+          <ha-form
+            .hass=${this.hass}
+            .data=${{ timeout: check.timeout, on_failure: check.on_failure ?? "warn" }}
+            .schema=${[
+              { name: "timeout", selector: { number: { min: 5, max: 300, step: 5, mode: "slider", unit_of_measurement: "s" } } },
+              {
+                name: "on_failure",
+                required: true,
+                selector: {
+                  select: {
+                    options: [
+                      { value: "warn", label: this._t("check_warn") },
+                      { value: "stop", label: this._t("check_stop") },
+                    ],
+                    mode: "dropdown",
+                  },
+                },
+              },
+            ]}
+            .computeLabel=${(s: { name: string }) => this._t(s.name === "timeout" ? "check_timeout" : "check_failure")}
+            @value-changed=${(ev: CustomEvent) => {
+              const v = ev.detail.value as Obj;
+              update({ timeout: v.timeout, on_failure: v.on_failure === "stop" ? "stop" : undefined });
+            }}
+          ></ha-form>
+        </div>`;
+      })}
+    </div>`;
   }
 
   private _routesChanged(id: string, activity: Activity, v: Obj): void {
@@ -1816,6 +1919,14 @@ export class EasyAvControlRoomEditor extends LitElement {
       border-top: 1px solid var(--divider-color);
     }
     /* An activity's devices: numbered raised rows */
+    .check .title .num {
+      color: var(--accent-color, var(--ltek-c-accent));
+      font-weight: var(--ltek-fw-semibold);
+      margin-right: var(--ltek-sp-1);
+    }
+    .check .ltek-row {
+      margin: var(--ltek-sp-2) 0;
+    }
     .ordered-row .num {
       flex: none;
       min-width: 1.5em;

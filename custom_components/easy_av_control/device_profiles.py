@@ -97,16 +97,24 @@ INDICATOR_SCHEMA = vol.Schema(
     }
 )
 
-PICTURE_SCHEMA = vol.Schema(
+
+def _picture_has_states(value: dict[str, Any]) -> dict[str, Any]:
+    if not value["ok"] and not value["fail"]:
+        raise vol.Invalid("a picture check needs the values that mean a picture (ok) or no picture (fail)")
+    return value
+
+
+PICTURE_SCHEMA = vol.All(vol.Schema(
     {
         vol.Required("entity"): MATCHER_SCHEMA,
         vol.Optional("attribute"): str,
-        vol.Required("ok"): _STATES,
+        # ok empty: any value except those in fail is a picture (a JVC shows its resolution, or no_signal)
+        vol.Optional("ok", default=list): _STATES,
         vol.Optional("fail", default=list): _STATES,
         vol.Optional("debounce", default=5.0): _SECONDS,
         vol.Optional("timeout", default=30.0): _SECONDS,
     }
-)
+), _picture_has_states)
 
 PROFILE_SCHEMA = vol.Schema(
     {
@@ -335,6 +343,8 @@ def classify(indicator: dict[str, Any] | None, state: State | None, attribute: s
     if value is None:
         return GROUP_UNKNOWN
     value = str(value)
+    if (unless := indicator.get("on_unless")) is not None:
+        return GROUP_OFF if value in unless else GROUP_ON
     for group in STATE_GROUPS:
         if value in indicator.get(group, ()):
             return group

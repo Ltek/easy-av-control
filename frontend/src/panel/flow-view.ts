@@ -42,12 +42,15 @@ const ICONS: Record<string, string> = {
   ready: "mdi:lan-connect",
   status: "mdi:state-machine",
   picture: "mdi:image-check-outline",
+  check: "mdi:image-check-outline",
   already_on: "mdi:check",
   step: "mdi:tune-variant",
 };
 
 /** Rows that belong to the device or steps header above them. */
-const NESTED = new Set(["boot", "reload", "ready", "status", "picture", "turn_on", "wait", "already_on", "step", "turn_off"]);
+const NESTED = new Set(["boot", "reload", "ready", "status", "picture", "check", "turn_on", "wait", "already_on", "step", "turn_off"]);
+/** Rows that start a group: a device, the checks, the steps. */
+const HEADERS = new Set(["device", "checks", "steps"]);
 
 export class EasyAvControlFlow extends LitElement {
   static properties = {
@@ -214,6 +217,17 @@ export class EasyAvControlFlow extends LitElement {
           entity: this._entity(row.entity_id),
           timeout: this._seconds(row.timeout),
         });
+      case "check": {
+        const name = this._device(row.device);
+        if (row.missing) return this._t("flow.check_missing", { device: name });
+        const unless = (row.unless as string[] | undefined) ?? [];
+        return this._t(unless.length ? "flow.check_unless" : "flow.check", {
+          device: name,
+          entity: this._entity(row.entity_id),
+          states: (unless.length ? unless : ((row.states as string[] | undefined) ?? [])).join(" / "),
+          timeout: this._seconds(row.timeout),
+        }) + (row.on_failure === "stop" ? ` ${this._t("flow.on_timeout_abort")}` : ` ${this._t("flow.check_warn")}`);
+      }
       case "picture":
         return this._t("flow.picture", {
           step: String(row.step ?? ""),
@@ -286,11 +300,11 @@ export class EasyAvControlFlow extends LitElement {
   private _renderRow(row: Row, nested: boolean, showTime: boolean): TemplateResult {
     const notes = this._notes(row);
     const call = this._call(row);
-    const header = row.kind === "device" || row.kind === "steps";
+    const header = HEADERS.has(row.kind);
     return html`<li class=${[nested ? "nested" : "", header ? "header" : "", row.kind].join(" ")}>
       <span class="time">${showTime ? this._time(row.at) : ""}</span>
       ${header
-        ? html`<span class="index">${row.kind === "device" ? row.index : "≡"}</span>`
+        ? html`<span class="index">${row.kind === "device" ? row.index : row.kind === "checks" ? "✓" : "≡"}</span>`
         : html`<ha-icon class="icon" .icon=${ICONS[row.kind] ?? "mdi:circle-small"}></ha-icon>`}
       <span class="body">
         <span class="what"
@@ -298,6 +312,8 @@ export class EasyAvControlFlow extends LitElement {
             ? this._device(row.device)
             : row.kind === "steps"
               ? this._t("flow.steps")
+              : row.kind === "checks"
+              ? this._t("flow.checks")
               : this._text(row)}</span
         >
         ${row.kind === "device" ? html`<span class="call">${row.entity_id}</span>` : nothing}
@@ -313,12 +329,12 @@ export class EasyAvControlFlow extends LitElement {
     let group = false;
     let last = "";
     const items = foreground.map((row) => {
-      if (row.kind === "device" || row.kind === "steps") group = true;
+      if (HEADERS.has(row.kind)) group = true;
       else if (!NESTED.has(row.kind) || row.reason === "unused") group = false;
       const time = this._time(row.at);
       const show = time !== last || row.kind === "state";
       last = time;
-      return this._renderRow(row, group && row.kind !== "device" && row.kind !== "steps", show);
+      return this._renderRow(row, group && !HEADERS.has(row.kind), show);
     });
     return html`<ol class="flow">${items}</ol>
       ${background.length

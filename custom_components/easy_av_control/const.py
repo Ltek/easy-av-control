@@ -8,7 +8,7 @@ DEVICE_NAME_PREFIX: Final = "AV"
 
 # Config entry schema version (see migration.py)
 CONFIG_VERSION: Final = 2
-CONFIG_MINOR_VERSION: Final = 1
+CONFIG_MINOR_VERSION: Final = 2
 
 # Configuration keys (schema v2: rooms -> devices / activities -> steps)
 CONF_ROOMS: Final = "rooms"
@@ -16,6 +16,8 @@ CONF_ACTIVITIES: Final = "activities"
 CONF_DEVICES: Final = "devices"
 CONF_ENTITY_ID: Final = "entity_id"
 CONF_STEPS: Final = "steps"
+# What must be right before the activity counts as running (a picture on the Lumagen, on the projector)
+CONF_CHECKS: Final = "checks"
 CONF_NAME: Final = "name"
 CONF_AREA_ID: Final = "area_id"
 CONF_DEFAULT_ACTIVITY: Final = "default_activity"

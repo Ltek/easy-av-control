@@ -64,7 +64,6 @@ export const STEP_TYPES = [
   "call_action",
   "delay",
   "wait_available",
-  "wait_picture",
 ] as const;
 
 export const GROUPS = ["volume", "channels", "transport", "navigation"] as const;

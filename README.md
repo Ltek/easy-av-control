@@ -368,7 +368,7 @@ result as unsaved changes, and nothing is stored until **Save**.
 
 | Section | What it offers |
 |---|---|
-| Detected devices | AV devices no room uses yet, grouped by their Home Assistant area, for that area's room (or a new room); nothing is ticked until you tick it, with the best integration for each job (a TV with PiPup, ADB and Android TV Remote is one device: PiPup for its state, ADB for the arrow keys), its outlet, and the activities to add it to, at the place its profile gives in the power-on order. A device with a picture check (Lumagen) gets a **Wait for a picture** step. **Create a new Activity per Room using the selected Devices** gives each room without activities one, named after the room |
+| Detected devices | AV devices no room uses yet, grouped by their Home Assistant area, for that area's room (or a new room); nothing is ticked until you tick it, with the best integration for each job (a TV with PiPup, ADB and Android TV Remote is one device: PiPup for its state, ADB for the arrow keys), its outlet, and the activities to add it to, at the place its profile gives in the power-on order. A device with a picture check (Lumagen, JVC projector) gets a picture check in the activity's **Checks**. **Create a new Activity per Room using the selected Devices** gives each room without activities one, named after the room |
 | Better integrations | A device a room uses that another integration now covers better. Not ticked |
 | Missing entities | Entities a room uses that no longer exist. When the same device is still covered by another integration, it's offered as the replacement |
 | Renamed entities | The same entity under a new ID: replaced everywhere except in actions and commands |
@@ -376,9 +376,20 @@ result as unsaved changes, and nothing is stored until **Save**.
 
 A Repair for a missing entity points here too.
 
-**Wait for a picture** (`type: wait_picture`, with `device`) waits until the device's picture check passes
-(Lumagen *Active Video*), up to its `timeout`. When there's no picture in time, `on_failure: {picture: …}`
-decides: `warn` (default) or `stop`.
+**Checks** (`checks:` on an activity) say what must be right before the activity counts as running. They run at
+the same time, once every device is on and before the actions after start, also when switching from another
+activity. A check names a `device` and uses that device's picture check from its profile (Lumagen *Active
+Video*, JVC *Source Display* showing a resolution), or watches an `entity_id` of your own until it shows one of
+`state`. Each has a `timeout` and `on_failure`: `warn` (default) or `stop`.
+
+```yaml
+checks:
+  - {device: lumagen}
+  - {device: projector}
+  - {device: receiver, entity_id: sensor.receiver_input, state: [HDMI 1], timeout: 20}
+```
+
+Wait-for-a-picture steps from earlier builds become checks by themselves.
 
 **The room's select** starts and stops in the background, so whoever sets it (an automation, Plex Center's room
 hook) follows the room's sensor instead of waiting minutes for the select. The `start_activity` and

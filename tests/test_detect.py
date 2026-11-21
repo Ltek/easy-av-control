@@ -211,7 +211,8 @@ async def test_apply_puts_devices_in_the_power_on_order_with_the_picture_check(h
     # projector and Lumagen early, before the processor (middle)
     order = kino["activities"]["movie"]["devices"]
     assert order[-1] == "isp" and set(order[:2]) == {"jvc_projector", "lumagen"}
-    assert kino["activities"]["movie"]["steps"] == [{"type": "wait_picture", "device": "lumagen"}]
+    assert kino["activities"]["movie"]["checks"] == [{"device": "lumagen"}]
+    assert not kino["activities"]["movie"].get("steps")
     assert rooms["kino"]["activities"]["movie"]["devices"] == ["isp"]   # the input is left alone
     # and it validates
     await async_validate_config(hass, {"rooms": out})
@@ -227,11 +228,11 @@ async def test_apply_creates_one_activity_per_room_with_the_selected_devices(has
     # named after the room; audio (middle) before the TV (late)
     assert living["activities"] == {
         "living_room": {"name": "Living Room", "order": 1,
-                        "devices": ["ceiling", "deck", "living_room_tv"], "steps": []}
+                        "devices": ["ceiling", "deck", "living_room_tv"], "checks": []}
     }
     theater = out["theater"]["activities"]["theater"]
     assert theater["devices"] == ["jvc_projector", "lumagen", "stormaudio_isp"]  # early, then middle
-    assert theater["steps"] == [{"type": "wait_picture", "device": "lumagen"}]
+    assert theater["checks"] == [{"device": "lumagen"}]
     await async_validate_config(hass, {"rooms": out})
 
 
@@ -240,7 +241,7 @@ async def test_starter_uses_only_the_selected_devices_and_existing_rooms_with_no
     rooms = {"kino": {"name": "Kino", "area_id": home["theater"], "devices": {}, "activities": {}}}
     jvc = _by_entity(detect_all(hass, profiles, rooms)["new"], home["jvc"])
     out = apply_detect(hass, profiles, rooms, {"new": [jvc], "starter": True})
-    assert out["kino"]["activities"] == {"kino": {"name": "Kino", "order": 1, "devices": ["jvc_projector"], "steps": []}}
+    assert out["kino"]["activities"] == {"kino": {"name": "Kino", "order": 1, "devices": ["jvc_projector"], "checks": []}}
     # a room that has activities gets none
     out = apply_detect(hass, profiles, _rooms(home), {"new": [{**jvc, "activities": []}], "starter": True})
     assert list(out["kino"]["activities"]) == ["movie"]
@@ -285,7 +286,7 @@ async def test_apply_replacements(hass: HomeAssistant):
 
 
 def test_starter_activity_without_a_room_name(hass: HomeAssistant):
-    assert starter_activity(hass, {}, {"devices": {}}, [], set()) == {"name": "On", "order": 1, "devices": [], "steps": []}
+    assert starter_activity(hass, {}, {"devices": {}}, [], set()) == {"name": "On", "order": 1, "devices": [], "checks": []}
 
 
 # ------------------------------------------------------------------------------------------- + Profile
@@ -310,10 +311,10 @@ async def test_draft_finds_a_power_sensor(hass: HomeAssistant, home):
     assert draft["watch"] == home["jvc_power"] and draft["profile"]["indicator"]["off"] == ["standby"]
 
 
-# ------------------------------------------------------------------------------------------- wait_picture
+# ------------------------------------------------------------------------------------------- checks
 
 
-async def test_wait_picture_step(hass: HomeAssistant, home):
+async def test_picture_check(hass: HomeAssistant, home):
     library = await async_get_library(hass)
     lumagen = dict(library.builtin["lumagen"].raw)
     lumagen.update(id="lumagen_fast", picture={**lumagen["picture"], "debounce": 0.05, "timeout": 1})
@@ -323,7 +324,7 @@ async def test_wait_picture_step(hass: HomeAssistant, home):
     data = {"rooms": {"kino": {"name": "Kino",
                                "devices": {"lum": {"entity_id": home["lum"], "name": "Lumagen", "state_source": "none"}},
                                "activities": {"movie": {"name": "Movie", "devices": ["lum"],
-                                                        "steps": [{"type": "wait_picture", "device": "lum"}]}}}}}
+                                                        "checks": [{"device": "lum"}]}}}}}
     coordinator = await setup(hass, devices, data)
 
     async def picture():
@@ -338,4 +339,58 @@ async def test_wait_picture_step(hass: HomeAssistant, home):
     hass.states.async_set(home["lum_video"], "No Source")
     await coordinator.async_stop_activity("kino")
     await coordinator.async_start_activity("kino", "movie")
-    assert coordinator.runtime("kino").warnings == ["Lumagen has no picture after 1 s, it shows No Source"]
+    assert coordinator.runtime("kino").warnings == ["Lumagen: no picture after 1 s, it shows No Source"]
+
+    # With on_failure stop, a missing picture aborts the start
+    await coordinator.async_stop_activity("kino")
+    coordinator.rooms["kino"]["activities"]["movie"]["checks"][0]["on_failure"] = "stop"
+    await coordinator.async_start_activity("kino", "movie")
+    assert coordinator.runtime("kino").state == "error"
+    assert "no picture" in coordinator.runtime("kino").error
+
+
+async def test_checks_run_together_and_an_own_entity_can_be_checked(hass: HomeAssistant, home):
+    """Two checks at once: the Lumagen's picture and an entity of your own; each waits its timeout."""
+    library = await async_get_library(hass)
+    lumagen = dict(library.builtin["lumagen"].raw)
+    lumagen.update(id="lumagen_fast", picture={**lumagen["picture"], "debounce": 0.05, "timeout": 1})
+    await library.async_save(lumagen)
+    hass.states.async_set(home["lum_video"], "No Source")
+    hass.states.async_set("sensor.projector_signal", "no_signal")
+    devices = Devices(hass)
+    checks = [
+        {"device": "lum"},
+        {"device": "lum", "entity_id": "sensor.projector_signal", "state": ["1080p24"], "debounce": 0.05, "timeout": 1},
+    ]
+    data = {"rooms": {"kino": {"name": "Kino",
+                               "devices": {"lum": {"entity_id": home["lum"], "name": "Lumagen", "state_source": "none"}},
+                               "activities": {"movie": {"name": "Movie", "devices": ["lum"], "checks": checks}}}}}
+    coordinator = await setup(hass, devices, data)
+
+    async def ready():
+        await asyncio.sleep(0.2)
+        hass.states.async_set(home["lum_video"], "Active Video")
+        hass.states.async_set("sensor.projector_signal", "1080p24")
+
+    loop = asyncio.get_running_loop()
+    started = loop.time()
+    task = asyncio.ensure_future(ready())
+    await coordinator.async_start_activity("kino", "movie")
+    await task
+    assert coordinator.runtime("kino").state == "active" and coordinator.runtime("kino").warnings == []
+    assert loop.time() - started < 1  # together, not one after the other
+
+
+async def test_old_picture_steps_become_checks(hass: HomeAssistant):
+    """Configs from before 2026.11.21.12: a wait_picture step is moved to the checks, the rest stays."""
+    from custom_components.easy_av_control.migration import migrate_checks
+
+    data = {"rooms": {"kino": {"devices": {"lum": {"entity_id": "media_player.lum"}},
+                               "activities": {"movie": {"devices": ["lum"], "steps": [
+                                   {"type": "wait_picture", "device": "lum", "timeout": 20},
+                                   {"type": "delay", "delay_after": 2},
+                               ]}}}}}
+    movie = migrate_checks(data)["rooms"]["kino"]["activities"]["movie"]
+    assert movie["checks"] == [{"device": "lum", "timeout": 20}]
+    assert movie["steps"] == [{"type": "delay", "delay_after": 2}]
+    assert data["rooms"]["kino"]["activities"]["movie"]["steps"][0]["type"] == "wait_picture"  # a copy
