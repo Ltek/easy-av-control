@@ -35,7 +35,7 @@ test("waiting for a device: at most the timeout, never below zero", () => {
 
 test("switching, without a time", () => {
   assert.deepEqual(progressText({ kind: "turn_on", name: "VU+" }, NOW, de), { text: "VU+ wird eingeschaltet" });
-  assert.deepEqual(progressText({ kind: "power_off", name: null }, NOW, en), { text: "Switching the outlets off" });
+  assert.deepEqual(progressText({ kind: "power_off", name: null }, NOW, en), { text: "Turning the outlets off" });
   assert.deepEqual(progressText({ kind: "reload", name: "Apple TV" }, NOW, de), {
     text: "Apple TV wird neu verbunden",
   });

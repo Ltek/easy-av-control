@@ -1,7 +1,8 @@
-"""The configuration panel's sidebar entry, which the panel can switch off and on.
+"""Settings of the panel and the card's look, kept in ``.storage/easy_av_control.ui``.
 
-Hidden, the panel stays at /easy-av-control and behind the integration's Configure; only the sidebar
-link goes. The choice is kept in ``.storage/easy_av_control.ui``.
+- The configuration panel's sidebar entry, which the panel can switch off and on. Hidden, the panel stays
+  at /easy-av-control and behind the integration's Configure; only the sidebar link goes.
+- What the Flow counts as a detail: shown only with Details on (the card's chip, the panel's).
 """
 from __future__ import annotations
 
@@ -18,6 +19,10 @@ from .const import DOMAIN, PANEL_URL_PATH
 _STORE = f"{DOMAIN}.ui"
 _DATA = f"{DOMAIN}_ui"
 _MODULE = f"{DOMAIN}_panel_module"
+
+# What the Flow can hide as a detail; entity IDs and waits by default
+FLOW_DETAILS = ["entities", "waits", "notes", "reloads", "outlets", "hooks"]
+DEFAULT_FLOW_DETAILS = ["entities", "waits"]
 
 
 async def _async_ui(hass: HomeAssistant) -> dict[str, Any]:
@@ -55,9 +60,43 @@ async def async_register_panel(hass: HomeAssistant, module_url: str | None = Non
     )
 
 
+async def async_flow_details(hass: HomeAssistant) -> list[str]:
+    details = (await _async_ui(hass))["data"].get("flow_details")
+    return list(DEFAULT_FLOW_DETAILS if details is None else details)
+
+
 @callback
 def async_setup_ws(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_sidebar)
+    websocket_api.async_register_command(hass, ws_ui_get)
+    websocket_api.async_register_command(hass, ws_flow_details)
+
+
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/ui/get"})
+@websocket_api.async_response
+async def ws_ui_get(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """The settings the card and the panel draw with (any user)."""
+    connection.send_result(
+        msg["id"],
+        {"sidebar": await async_sidebar_visible(hass), "flow_details": await async_flow_details(hass)},
+    )
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): f"{DOMAIN}/ui/flow_details", vol.Required("details"): [vol.In(FLOW_DETAILS)]}
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_flow_details(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Set what the Flow counts as a detail."""
+    ui = await _async_ui(hass)
+    ui["data"]["flow_details"] = [d for d in FLOW_DETAILS if d in msg["details"]]
+    await ui["store"].async_save(ui["data"])
+    connection.send_result(msg["id"], {"flow_details": ui["data"]["flow_details"]})
 
 
 @websocket_api.websocket_command(

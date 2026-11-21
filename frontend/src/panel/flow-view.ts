@@ -11,7 +11,7 @@ import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 import type { HomeAssistant } from "../types";
 import type { Room } from "./model";
 import { t } from "./strings";
-import { HEADERS, NESTED, groups, rowStatuses, stateRole, type Live, type Row, type RowStatus } from "./flow-live";
+import { FLOW_DETAILS, HEADERS, NESTED, groups, hiddenRow, rowStatuses, stateRole, type Live, type Row, type RowStatus } from "./flow-live";
 import { ltekChrome, ltekPanelScale, ltekTokens } from "./ltek-styles";
 
 type DeviceStates = Record<string, { group: string; value: string | null }>;
@@ -84,6 +84,8 @@ export class EasyAvControlFlow extends LitElement {
     from: { attribute: false },
     details: { type: Boolean },
     _states: { state: true },
+    _detailKinds: { state: true },
+    _showDetails: { state: true },
   };
 
   declare hass: HomeAssistant;
@@ -103,6 +105,10 @@ export class EasyAvControlFlow extends LitElement {
   /** Entities, actions and notes; off shows only what happens */
   declare details: boolean;
   declare _states: DeviceStates;
+  /** What counts as a detail (ui/get; set in the panel's Flow options) */
+  declare _detailKinds: string[];
+  /** The panel's own Details chip */
+  declare _showDetails: boolean;
   /** The furthest row this run has reached */
   private _reached = -1;
   private _statesTimer?: number;
@@ -116,6 +122,36 @@ export class EasyAvControlFlow extends LitElement {
     this._mode = "start";
     this.details = true;
     this._states = {};
+    this._detailKinds = ["entities", "waits"];
+    this._showDetails = true;
+  }
+
+  connectedCallback(): void {
+    super.connectedCallback();
+    this.hass
+      ?.callWS<{ flow_details: string[] }>({ type: "easy_av_control/ui/get" })
+      .then((ui) => (this._detailKinds = ui.flow_details))
+      .catch(() => undefined);
+  }
+
+  /** Details are shown: on the card its Details chip, in the panel its own. */
+  private get _detailsOn(): boolean {
+    return this.live ? this.details : this._showDetails;
+  }
+
+  /** Whether one kind of detail is hidden now. */
+  private _hides(kind: string): boolean {
+    return !this._detailsOn && this._detailKinds.includes(kind);
+  }
+
+  private async _setDetailKinds(kinds: string[]): Promise<void> {
+    this._detailKinds = kinds;
+    try {
+      const r = await this.hass.callWS<{ flow_details: string[] }>({ type: "easy_av_control/ui/flow_details", details: kinds });
+      this._detailKinds = r.flow_details;
+    } catch {
+      /* kept for this page */
+    }
   }
 
   disconnectedCallback(): void {
@@ -206,18 +242,6 @@ export class EasyAvControlFlow extends LitElement {
   /** The room's names: the edited room in the panel, the names control/flow sends on the card. */
   private get _room(): Room {
     return this.room ?? (this._flow && !this._flow.error ? this._flow.room : undefined) ?? ({} as Room);
-  }
-
-  /** The colour of a row's icon: its device's state, or for outlets whether they are on. */
-  private _role(row: Row, header?: Row): string | undefined {
-    const device = (row.device ?? header?.device) as string | undefined;
-    if (device && this._states[device]) return stateRole(this._states[device].group);
-    const entities = (row.entities as string[] | undefined) ?? [];
-    if (entities.length && ["outlets_on", "outlets_off", "outlet_keep"].includes(row.kind)) {
-      const states = entities.map((e) => this.hass.states[e]?.state);
-      return states.every((v) => v === "on") ? "on" : states.every((v) => v === "off") ? "off" : "unknown";
-    }
-    return undefined;
   }
 
   private _t(key: string, params?: Record<string, string>): string {
@@ -404,17 +428,19 @@ export class EasyAvControlFlow extends LitElement {
 
   private _renderRow(row: Row, nested: boolean, showTime: boolean, group?: Row, status?: RowStatus): TemplateResult {
     const target = this.live ? undefined : this._target(row, group);
-    const notes = this.details ? this._notes(row) : [];
-    const call = this.details ? this._call(row) : undefined;
+    const notes = this._hides("notes") ? [] : this._notes(row);
+    const call = this._hides("entities") ? undefined : this._call(row);
     const header = HEADERS.has(row.kind);
-    const role = this._role(row, group);
-    const classes = [nested ? "nested" : "", header ? "header" : "", row.kind, status ? `s-${status}` : "", role ? `r-${role}` : ""];
+    const classes = [nested ? "nested" : "", header ? "header" : "", row.kind, status ? `s-${status}` : ""];
+    const state = row.kind === "device" && row.device ? this._states[row.device as string] : undefined;
     return html`<li class=${classes.join(" ")}>
       <span class="time"
         >${status === "done"
           ? html`<ha-icon class="mark" icon="mdi:check"></ha-icon>`
           : status === "active"
             ? html`<ha-icon class="mark spin" icon="mdi:loading"></ha-icon>`
+            : status === "failed"
+              ? html`<ha-icon class="mark" icon="mdi:close"></ha-icon>`
             : showTime
               ? this._time(row.at)
               : ""}</span
@@ -425,17 +451,16 @@ export class EasyAvControlFlow extends LitElement {
       <span class="body">
         <span class="what"
           >${row.kind === "device"
-            ? this._device(row.device)
+            ? html`${this._device(row.device)}${state?.value
+                ? html`<span class="state-chip r-${stateRole(state.group)}">${state.value}</span>`
+                : nothing}`
             : row.kind === "steps"
               ? this._t("flow.steps")
               : row.kind === "checks"
               ? this._t("flow.checks")
               : this._text(row)}</span
         >
-        ${row.kind === "device" && this.details ? html`<span class="call">${row.entity_id}</span>` : nothing}
-        ${row.kind === "device" && row.device && this._states[row.device as string]?.value
-          ? html`<span class="now">${this._t("flow.now", { value: String(this._states[row.device as string].value) })}</span>`
-          : nothing}
+        ${row.kind === "device" && !this._hides("entities") ? html`<span class="call">${row.entity_id}</span>` : nothing}
         ${call ? html`<span class="call">${call}</span>` : nothing}
         ${notes.length ? html`<span class="notes">${notes.map((n) => html`<span class="note">${n}</span>`)}</span>` : nothing}
       </span>
@@ -457,7 +482,7 @@ export class EasyAvControlFlow extends LitElement {
   private _renderRows(rows: Row[]): TemplateResult {
     const under = groups(rows);
     let statuses: RowStatus[] | undefined;
-    if (this.live && ["starting", "stopping", "active"].includes(this.live.state)) {
+    if (this.live && ["starting", "stopping", "active", "error"].includes(this.live.state)) {
       statuses = rowStatuses(rows, this.live, this._reached);
       const active = statuses.lastIndexOf("active");
       if (active > this._reached && !HEADERS.has(rows[active].kind)) this._reached = active;
@@ -465,7 +490,7 @@ export class EasyAvControlFlow extends LitElement {
     const background = rows.filter((row) => row.background);
     let last = "";
     const items = rows.flatMap((row, i) => {
-      if (row.background) return [];
+      if (row.background || (!this._detailsOn && hiddenRow(row, this._detailKinds))) return [];
       const time = this._time(row.at);
       const show = time !== last || row.kind === "state";
       last = time;
@@ -474,7 +499,9 @@ export class EasyAvControlFlow extends LitElement {
     return html`<ol class="flow">${items}</ol>
       ${background.length
         ? html`<h4>${this._t("flow.background")}</h4>
-            <ol class="flow">${background.map((row) => this._renderRow(row, false, true, undefined, statuses?.[rows.indexOf(row)]))}</ol>`
+            <ol class="flow">${background
+              .filter((row) => this._detailsOn || !hiddenRow(row, this._detailKinds))
+              .map((row) => this._renderRow(row, false, true, undefined, statuses?.[rows.indexOf(row)]))}</ol>`
         : nothing}`;
   }
 
@@ -486,6 +513,24 @@ export class EasyAvControlFlow extends LitElement {
     }
     const others = Object.entries(this.room.activities ?? {}).filter(([id]) => id !== this.activityId);
     return html`
+      <details class="ltek-sub options">
+        <summary><ha-icon icon="mdi:tune-variant"></ha-icon>${this._t("flow.options")}</summary>
+        <div class="ltek-sub-body">
+          <p class="ltek-hint">${this._t("flow.options_hint")}</p>
+          ${FLOW_DETAILS.map(
+            (kind) => html`<label class="check"
+              ><input
+                type="checkbox"
+                .checked=${this._detailKinds.includes(kind)}
+                @change=${(ev: Event) => {
+                  const on = (ev.target as HTMLInputElement).checked;
+                  this._setDetailKinds(on ? [...this._detailKinds, kind] : this._detailKinds.filter((k) => k !== kind));
+                }}
+              />${this._t(`flow.detail_${kind}`)}</label
+            >`,
+          )}
+        </div>
+      </details>
       <div class="modes" role="tablist">
         ${(["start", "stop"] as Mode[]).map(
           (mode) => html`<button
@@ -497,6 +542,9 @@ export class EasyAvControlFlow extends LitElement {
             ${this._t(`flow.mode_${mode}`)}
           </button>`,
         )}
+        <button class="chip ${this._showDetails ? "on" : ""}" @click=${() => (this._showDetails = !this._showDetails)}>
+          <ha-icon icon=${this._showDetails ? "mdi:eye-outline" : "mdi:eye-off-outline"}></ha-icon>${this._t("flow.details_chip")}
+        </button>
         ${this._mode === "start" && others.length
           ? html`<select
               aria-label=${this._t("flow.from_label")}
@@ -545,7 +593,7 @@ export class EasyAvControlFlow extends LitElement {
             seconds: this._seconds(Math.max(0, ...background)),
           });
     return html`${this._renderRows(flow.rows)}
-      ${this.live && !this.details ? nothing : html`<p class="summary">${summary}</p>`}`;
+      ${this._detailsOn ? html`<p class="summary">${summary}</p>` : nothing}`;
   }
 
   static styles = [
@@ -611,7 +659,7 @@ export class EasyAvControlFlow extends LitElement {
       justify-self: end;
     }
     .time {
-      color: var(--state-icon-active-color, var(--state-icon-color, var(--secondary-text-color)));
+      color: var(--secondary-text-color);
       font-size: var(--ltek-fs-small);
       font-variant-numeric: tabular-nums;
       white-space: nowrap;
@@ -654,35 +702,48 @@ export class EasyAvControlFlow extends LitElement {
       min-width: 0;
       overflow-wrap: anywhere;
     }
-    /* Device states: the theme's colours */
-    li.r-on .icon,
-    li.r-on .index {
-      color: var(--state-icon-active-color, var(--state-active-color, var(--ltek-c-accent)));
-      border-color: currentColor;
-    }
-    li.r-busy .icon,
-    li.r-busy .index {
-      color: var(--warning-color, #ffa600);
-      border-color: currentColor;
-    }
-    li.r-off .icon,
-    li.r-off .index {
-      color: var(--state-icon-color, var(--secondary-text-color));
-      border-color: currentColor;
-    }
-    li.r-error .icon,
-    li.r-error .index {
-      color: var(--error-color, #db4437);
-      border-color: currentColor;
-    }
-    li.r-unavailable .icon,
-    li.r-unavailable .index {
-      color: var(--state-unavailable-color, var(--disabled-text-color, #6f6f6f));
-      border-color: currentColor;
-    }
-    .now {
-      font-size: var(--ltek-fs-small);
+    /* A device's state now, as a chip beside its name */
+    .state-chip {
+      display: inline-block;
+      margin-left: var(--ltek-sp-2);
+      padding: 0 8px;
+      border-radius: 10px;
+      border: 1px solid currentColor;
+      font-size: var(--ltek-fs-tiny);
+      font-weight: var(--ltek-fw-medium);
+      vertical-align: 1px;
       color: var(--secondary-text-color);
+    }
+    .state-chip.r-on {
+      color: var(--state-icon-active-color, var(--state-active-color, var(--ltek-c-accent)));
+    }
+    .state-chip.r-busy {
+      color: var(--warning-color, #ffa600);
+    }
+    .state-chip.r-error {
+      color: var(--error-color, #db4437);
+    }
+    .state-chip.r-unavailable {
+      color: var(--state-unavailable-color, var(--disabled-text-color, #6f6f6f));
+    }
+    /* Step number and icon: yellow while it runs, green done, red failed */
+    li.s-active .icon,
+    li.s-active .index,
+    li.s-active .mark {
+      color: var(--yellow-color, #ffeb3b);
+      border-color: currentColor;
+    }
+    li.s-done .icon,
+    li.s-done .index,
+    li.s-done .mark {
+      color: var(--green-color, #4caf50);
+      border-color: currentColor;
+    }
+    li.s-failed .icon,
+    li.s-failed .index,
+    li.s-failed .mark {
+      color: var(--red-color, #f44336);
+      border-color: currentColor;
     }
     /* Live: done, doing, still to come */
     li.s-done .what {
@@ -703,11 +764,41 @@ export class EasyAvControlFlow extends LitElement {
     }
     .mark {
       --mdc-icon-size: 16px;
-      color: var(--success-color, #43a047);
     }
     .mark.spin {
-      color: var(--ltek-c-accent);
       animation: spin 1s linear infinite;
+    }
+    details.options {
+      margin-bottom: var(--ltek-sp-3);
+    }
+    details.options label.check {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--ltek-sp-2);
+      margin: 0 var(--ltek-sp-5) var(--ltek-sp-2) 0;
+      font-size: var(--ltek-fs-body);
+      color: var(--ltek-c-label);
+    }
+    details.options input {
+      accent-color: var(--ltek-c-accent);
+    }
+    .modes .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 10px 3px 8px;
+      border-radius: 14px;
+      border: 1px solid var(--divider-color);
+      background: transparent;
+      color: var(--secondary-text-color);
+      font: inherit;
+      font-size: var(--ltek-fs-small);
+      cursor: pointer;
+      --mdc-icon-size: 16px;
+    }
+    .modes .chip.on {
+      border-color: var(--ltek-c-accent);
+      color: var(--ltek-c-accent);
     }
     @keyframes spin {
       to {

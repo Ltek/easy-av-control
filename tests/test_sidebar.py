@@ -28,3 +28,15 @@ async def test_sidebar_switch(hass: HomeAssistant, hass_ws_client) -> None:
     await client.send_json_auto_id({"type": "easy_av_control/ui/sidebar", "visible": True})
     assert (await client.receive_json())["result"] == {"visible": True}
     assert hass.data[DATA_PANELS]["easy-av-control"].sidebar_title == "Easy AV Control"
+
+
+async def test_flow_details(hass: HomeAssistant, hass_ws_client) -> None:
+    """What the Flow counts as a detail: entity IDs and waits by default, then what the panel sets."""
+    assert await async_setup_component(hass, "easy_av_control", {})
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id({"type": "easy_av_control/ui/get"})
+    assert (await client.receive_json())["result"]["flow_details"] == ["entities", "waits"]
+    await client.send_json_auto_id({"type": "easy_av_control/ui/flow_details", "details": ["notes", "entities"]})
+    assert (await client.receive_json())["result"] == {"flow_details": ["entities", "notes"]}
+    await client.send_json_auto_id({"type": "easy_av_control/ui/get"})
+    assert (await client.receive_json())["result"]["flow_details"] == ["entities", "notes"]

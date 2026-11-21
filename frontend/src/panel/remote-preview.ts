@@ -7,7 +7,16 @@
  */
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 
-import "../easy-av-control-card";
+import { EasyAvControlRemoteCard } from "../easy-av-control-card";
+
+/**
+ * The preview draws with this bundle's own copy of the card, under its own tag: the dashboard's card
+ * (easy-av-control-card) may be an older build still cached in the browser, which this page must not depend on.
+ */
+class EasyAvControlPreviewCard extends EasyAvControlRemoteCard {}
+if (!customElements.get("easy-av-control-preview-card")) {
+  customElements.define("easy-av-control-preview-card", EasyAvControlPreviewCard);
+}
 import { commandLabel } from "../labels";
 import type { HomeAssistant, RoomView } from "../types";
 import type { Room } from "./model";
@@ -217,11 +226,11 @@ export class EasyAvControlRemotePreview extends LitElement {
     const dead = Object.entries(targets).filter(([, target]) => !target.via);
     return html`<div class="layout">
       <div class="card">
-        <easy-av-control-card
+        <easy-av-control-preview-card
           .hass=${this.hass}
           .demoView=${view}
           @preview-call=${this._onCall}
-        ></easy-av-control-card>
+        ></easy-av-control-preview-card>
       </div>
       <div class="info">
         ${this._renderPressed(view, targets)}

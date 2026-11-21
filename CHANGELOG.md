@@ -1,5 +1,24 @@
 # Changelog
 
+## v2026.11.21.16
+
+**Fixed**
+- **Remote control preview showed "Pick a room in the card settings".** The preview used whatever card the
+  browser had loaded for the dashboard, which can be an older cached build. It now draws with the panel's own
+  copy of the card.
+
+**Added**
+- **Flow options** at the top of the panel's Flow: what counts as a detail (entity IDs and actions, waits,
+  notes, reloads, outlets, actions on start and stop; entity IDs and waits by default). Details off hides them,
+  in the panel (its new Details chip) and on the card. The choice is kept for the whole installation.
+- **Failed steps** in the card's live Flow: the step a start stopped at is marked red.
+
+**Changed**
+- **Flow colours:** times in the theme's secondary text colour, device names in its accent colour; a step's
+  number and icon turn yellow while it runs, green when done and red when it failed.
+- **A device's state** is a colour-coded chip right beside its name, instead of "now: …".
+- Wording: "Switch on/off" is now "Turn on/off", "the state must hold" is "state must hold".
+
 ## v2026.11.21.15
 
 **Fixed**

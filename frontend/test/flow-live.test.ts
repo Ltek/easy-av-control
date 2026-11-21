@@ -54,3 +54,19 @@ test("a device's state picks a theme colour", () => {
   assert.equal(stateRole("unavailable"), "unavailable");
   assert.equal(stateRole(undefined), "unknown");
 });
+
+test("a failed start marks the row it stopped at", async () => {
+  const { rowStatuses } = await import("../src/panel/flow-live");
+  const s = rowStatuses(rows, { state: "error" }, 8);
+  assert.equal(s[8], "failed");
+  assert.equal(s[6], "failed"); // its device
+  assert.equal(s[4], "done");
+  assert.equal(s[10], "todo");
+});
+
+test("details hide whole rows by kind", async () => {
+  const { hiddenRow } = await import("../src/panel/flow-live");
+  assert.ok(hiddenRow({ kind: "status", at }, ["waits"]));
+  assert.ok(!hiddenRow({ kind: "turn_on", at }, ["waits", "entities"]));
+  assert.ok(hiddenRow({ kind: "outlets_on", at }, ["outlets"]));
+});

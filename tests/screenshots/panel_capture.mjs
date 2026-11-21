@@ -155,12 +155,21 @@ await shotBoth('activity-devices');
 await page.locator('easy-av-control-room-editor summary', { hasText: 'Checks' }).click();
 await settle(1200);
 await shotBoth('activity-checks');
+await page.locator('easy-av-control-room-editor summary', { hasText: 'Remote control preview' }).click();
+await settle(2500);
+await page.locator('easy-av-control-remote-preview').scrollIntoViewIfNeeded();
+await shotBoth('activity-preview');
 
 // The menu's Flow icon opens the activity at its Flow
 await page.locator('easy-av-control-panel button.nav-flow').first().click();
 await settle(2500);
 await page.locator('easy-av-control-flow').scrollIntoViewIfNeeded();
 await shotBoth('activity-flow');
+await page.locator('easy-av-control-flow details.options summary').click();
+await settle(600);
+await page.locator('easy-av-control-flow details.options').scrollIntoViewIfNeeded();
+await shotBoth('activity-flow-options');
+await page.locator('easy-av-control-flow details.options summary').click();
 // The Remote control card's panels under their divider; Settings in the card by integration
 await page.locator('easy-av-control-room-editor summary', { hasText: 'Settings in the card' }).click();
 await settle(1200);

@@ -11,7 +11,7 @@ export interface Live {
   current?: { kind: string; device?: string | null; step?: number } | null;
 }
 
-export type RowStatus = "done" | "active" | "todo";
+export type RowStatus = "done" | "active" | "failed" | "todo";
 
 /** Rows that belong to the device or group header above them. */
 export const NESTED = new Set([
@@ -73,6 +73,15 @@ export function currentRow(rows: Row[], current: Live["current"]): number {
  * so a moment between two steps doesn't clear the marks. A finished run marks everything done.
  */
 export function rowStatuses(rows: Row[], live: Live, reached: number): RowStatus[] {
+  if (live.state === "error") {
+    // The run stopped at the furthest row it reached
+    const under = groups(rows);
+    return rows.map((row, i) => {
+      if (row.background || reached < 0) return "todo";
+      if (i < reached) return HEADERS.has(row.kind) && under[reached] === row ? "failed" : "done";
+      return i === reached ? "failed" : "todo";
+    });
+  }
   const finished = live.state === "active" || live.state === "idle";
   const running = live.state === "starting" || live.state === "stopping";
   const at = running ? Math.max(reached, currentRow(rows, live.current)) : -1;
@@ -107,4 +116,18 @@ export function stateRole(group: string | undefined): string {
     default:
       return "unknown";
   }
+}
+
+/** What the Flow can count as a detail, and which rows each one hides (entities and notes hide parts of rows). */
+export const DETAIL_ROWS: Record<string, string[]> = {
+  waits: ["wait", "boot", "ready", "status", "hook_wait"],
+  reloads: ["reload"],
+  outlets: ["outlets_on", "outlets_off", "outlet_keep"],
+  hooks: ["hook", "hook_wait"],
+};
+export const FLOW_DETAILS = ["entities", "waits", "notes", "reloads", "outlets", "hooks"];
+
+/** Whether a row is left out while details are hidden. */
+export function hiddenRow(row: Row, details: string[]): boolean {
+  return details.some((d) => DETAIL_ROWS[d]?.includes(row.kind));
 }
