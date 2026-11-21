@@ -1,5 +1,23 @@
 # Changelog
 
+## v2026.11.21.13
+
+**Added**
+- **Flow: ✎ on every row** opens the panel the row comes from: a device's Device, Device state, Power Outlet,
+  Waiting times or Connection check, or the activity's Checks, Actions after start or Advanced.
+- **In sidebar** chip in the left menu: shows or hides Easy AV Control in Home Assistant's sidebar. Hidden, the
+  panel stays at `/easy-av-control` and behind the integration's Configure.
+
+**Changed**
+- **Larger text** in the panel (nothing below 10px): the left menu, labels, hints and the Flow.
+- **Fields in the design guide's style** everywhere in the panel: a label beside each control, native text
+  boxes, dropdowns and checkboxes, sliders with a value readout. Home Assistant's own pickers (entity, area,
+  icon) are bordered instead of filled.
+- **+ Add room** is a + beside the ROOMS heading.
+- **One highlighted menu item:** an open activity is highlighted instead of its room; a click on the room goes
+  back to the room's page.
+- **Guide** moved to the left menu, under Profiles. It opens in the right pane; Close goes back to where you were.
+
 ## v2026.11.21.12
 
 **Added**

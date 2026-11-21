@@ -5,7 +5,7 @@
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 
 import type { HomeAssistant } from "../types";
-import { ltekChrome, ltekTokens } from "./ltek-styles";
+import { ltekChrome, ltekPanelScale, ltekTokens } from "./ltek-styles";
 import type { Obj, Rooms } from "./model";
 import { t } from "./strings";
 
@@ -347,6 +347,7 @@ export class EasyAvControlDetect extends LitElement {
 
   static styles = [
     ltekTokens,
+    ltekPanelScale,
     ltekChrome,
     css`
       :host {

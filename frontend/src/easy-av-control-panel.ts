@@ -10,12 +10,16 @@ import { LitElement, css, html, nothing, type PropertyValues, type TemplateResul
 import type { ProfileView } from "./panel/device-state";
 import "./panel/detect";
 import "./panel/guide";
-import { REPO, ltekChrome, ltekTokens } from "./panel/ltek-styles";
+import { REPO, ltekChrome, ltekPanelScale, ltekTokens } from "./panel/ltek-styles";
 import "./panel/profiles";
 import "./panel/room-editor";
 import { clean, slugify, sortedActivities, uniqueKey, type Room, type Rooms, type Sources } from "./panel/model";
 import { t } from "./panel/strings";
 import type { HomeAssistant } from "./types";
+
+type Page = "room" | "profiles" | "detect" | "guide";
+/** Tells the room editor what to show: an activity (at its Flow), or with no activity the room's own page */
+type Jump = { activity?: string; flow: boolean; n: number };
 
 interface Missing {
   room: string;
@@ -65,6 +69,7 @@ export class EasyAvControlPanel extends LitElement {
     _focusProfile: { state: true },
     _version: { state: true },
     _jump: { state: true },
+    _sidebar: { state: true },
     _openActivity: { state: true },
   };
 
@@ -82,14 +87,18 @@ export class EasyAvControlPanel extends LitElement {
   /** Every profile, for the Profiles page and the device pages' profile picker */
   declare _profiles: ProfileView[];
   /** Rooms (the selected one) or the Profiles page */
-  declare _page: "room" | "profiles" | "detect";
+  declare _page: Page;
+  /** Where Close on the Guide goes back to */
+  private _back: Page = "room";
+  /** Whether the panel is in Home Assistant's sidebar (ui/sidebar) */
+  declare _sidebar?: boolean;
   /** An integration to start a + Profile draft for (from Detect integrations) */
   declare _draftFor?: string;
   /** A profile to show on the Profiles page (from a Detected Devices chip) */
   declare _focusProfile?: string;
   declare _version?: string;
   /** Tells the room editor to open an activity (from the menu) */
-  declare _jump?: { activity: string; flow: boolean; n: number };
+  declare _jump?: Jump;
   /** The activity the room editor shows, to mark it in the menu */
   declare _openActivity?: string;
 
@@ -129,6 +138,10 @@ export class EasyAvControlPanel extends LitElement {
       });
       this._entryId = result.entry_id;
       this._version = (result as { version?: string }).version;
+      this.hass
+        .callWS<{ visible: boolean }>({ type: "easy_av_control/ui/sidebar" })
+        .then((r) => (this._sidebar = r.visible))
+        .catch(() => undefined);
       this._revision = result.revision;
       this._original = JSON.stringify(result.rooms);
       this._rooms = result.rooms;
@@ -324,14 +337,22 @@ export class EasyAvControlPanel extends LitElement {
     const selected = this._selected && this._rooms[this._selected] ? this._selected : undefined;
     return html`<div class="layout ${this.narrow ? "narrow" : ""}">
       <nav>
-        <div class="nav-title">${this._t("rooms")}</div>
+        <div class="nav-head">
+          <span class="nav-title">${this._t("rooms")}</span>
+          <button
+            class="nav-add"
+            title=${this._t("add_room")}
+            aria-label=${this._t("add_room")}
+            @click=${() => (this._adding = true)}
+          >
+            <ha-icon icon="mdi:plus"></ha-icon>
+          </button>
+        </div>
+        ${this._adding ? this._renderAddRoom() : nothing}
         ${rooms.map(
           ([id, room]) => html`<button
-            class="room ${this._page === "room" && id === selected ? "active" : ""}"
-            @click=${() => {
-              this._selected = id;
-              this._page = "room";
-            }}
+            class="room ${this._page === "room" && id === selected && !this._openActivity ? "active" : ""}"
+            @click=${() => this._goRoom(id)}
           >
             ${room.name ?? id}
           </button>
@@ -354,7 +375,6 @@ export class EasyAvControlPanel extends LitElement {
             </div>`,
           )}`,
         )}
-        ${this._renderAddRoom()}
         <div class="nav-title library">${this._t("setup")}</div>
         <button class="room ${this._page === "detect" ? "active" : ""}" @click=${() => (this._page = "detect")}>
           <ha-icon icon="mdi:auto-fix"></ha-icon> ${this._t("detect")}
@@ -362,6 +382,21 @@ export class EasyAvControlPanel extends LitElement {
         <button class="room ${this._page === "profiles" ? "active" : ""}" @click=${() => (this._page = "profiles")}>
           <ha-icon icon="mdi:package-variant-closed"></ha-icon> ${this._t("profiles")}
         </button>
+        <button class="room ${this._page === "guide" ? "active" : ""}" @click=${() => this._openGuide()}>
+          <ha-icon icon="mdi:help-circle-outline"></ha-icon> ${this._t("guide")}
+        </button>
+        ${this._sidebar === undefined
+          ? nothing
+          : html`<button
+              class="sidebar-chip ${this._sidebar ? "on" : ""}"
+              role="switch"
+              aria-checked=${this._sidebar ? "true" : "false"}
+              title=${this._t("sidebar_hint")}
+              @click=${() => this._setSidebar(!this._sidebar)}
+            >
+              <ha-icon icon=${this._sidebar ? "mdi:check" : "mdi:eye-off-outline"}></ha-icon>
+              ${this._t("sidebar_chip")}
+            </button>`}
         <div class="nav-foot">
           <a class="ltek-star" href=${REPO} target="_blank" rel="noopener">${this._t("star")}</a>
           <a class="ltek-issue" href="${REPO}/issues" target="_blank" rel="noopener">${this._t("report")}</a>
@@ -369,9 +404,13 @@ export class EasyAvControlPanel extends LitElement {
         </div>
       </nav>
       <main>
-        <easy-av-control-guide .language=${this.hass.language}></easy-av-control-guide>
         ${this._renderBanner()}
-        ${this._page === "detect"
+        ${this._page === "guide"
+          ? html`<easy-av-control-guide
+              .language=${this.hass.language}
+              @close=${() => (this._page = this._back)}
+            ></easy-av-control-guide>`
+          : this._page === "detect"
           ? html`<easy-av-control-detect
               .hass=${this.hass}
               .rooms=${this._rooms}
@@ -424,6 +463,30 @@ export class EasyAvControlPanel extends LitElement {
     </div>`;
   }
 
+  /** A room from the menu: its own page, never an activity or device left open in it. */
+  private _goRoom(id: string): void {
+    this._selected = id;
+    this._page = "room";
+    this._openActivity = undefined;
+    this._jump = { flow: false, n: (this._jump?.n ?? 0) + 1 };
+  }
+
+  private _openGuide(): void {
+    if (this._page !== "guide") this._back = this._page;
+    this._page = "guide";
+    window.scrollTo({ top: 0 });
+  }
+
+  private async _setSidebar(visible: boolean): Promise<void> {
+    this._sidebar = visible;
+    try {
+      const r = await this.hass.callWS<{ visible: boolean }>({ type: "easy_av_control/ui/sidebar", visible });
+      this._sidebar = r.visible;
+    } catch {
+      this._sidebar = !visible;
+    }
+  }
+
   /** Open an activity of a room from the menu, at its Flow when ``flow``. */
   private _goActivity(room: string, activity: string, flow: boolean): void {
     this._selected = room;
@@ -468,6 +531,7 @@ export class EasyAvControlPanel extends LitElement {
 
   static styles = [
     ltekTokens,
+    ltekPanelScale,
     ltekChrome,
     css`
     :host {
@@ -499,7 +563,7 @@ export class EasyAvControlPanel extends LitElement {
       text-overflow: ellipsis;
     }
     .dirty {
-      font-size: 0.85em;
+      font-size: var(--ltek-fs-small);
       opacity: 0.85;
     }
     button {
@@ -683,6 +747,55 @@ export class EasyAvControlPanel extends LitElement {
       background: var(--ltek-c-accent-fade);
       border-color: var(--ltek-c-accent);
       color: var(--ltek-c-text);
+    }
+    .nav-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+    }
+    .nav-head .nav-title {
+      margin-bottom: 0;
+      width: auto;
+    }
+    button.nav-add {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      padding: 0;
+      border: 1px dashed var(--ltek-c-accent);
+      border-radius: var(--ltek-r-ctrl);
+      background: transparent;
+      color: var(--ltek-c-accent);
+      cursor: pointer;
+      --mdc-icon-size: 18px;
+    }
+    button.nav-add:hover {
+      background: var(--ltek-c-accent-fade-soft);
+    }
+    /* In the sidebar: a chip that switches the panel's sidebar entry */
+    button.sidebar-chip {
+      align-self: flex-start;
+      display: inline-flex;
+      align-items: center;
+      gap: var(--ltek-sp-1);
+      margin-top: var(--ltek-sp-1);
+      padding: 3px 12px 3px 8px;
+      border-radius: 14px;
+      border: 1px solid var(--ltek-c-border);
+      background: transparent;
+      color: var(--ltek-c-muted);
+      font: inherit;
+      font-size: var(--ltek-fs-small);
+      cursor: pointer;
+      --mdc-icon-size: 16px;
+    }
+    button.sidebar-chip.on {
+      border-color: var(--ltek-c-accent);
+      color: var(--ltek-c-accent);
+      background: var(--ltek-c-accent-fade);
     }
     /* A room's activities, under it in the menu; the icon on the right opens the Flow */
     .nav-activity {

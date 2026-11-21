@@ -9,7 +9,7 @@ import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 import type { HomeAssistant } from "../types";
 import type { Room } from "./model";
 import { t } from "./strings";
-import { ltekChrome, ltekTokens } from "./ltek-styles";
+import { ltekChrome, ltekPanelScale, ltekTokens } from "./ltek-styles";
 
 
 type Row = {
@@ -49,6 +49,29 @@ const ICONS: Record<string, string> = {
 
 /** Rows that belong to the device or steps header above them. */
 const NESTED = new Set(["boot", "reload", "ready", "status", "picture", "check", "turn_on", "wait", "already_on", "step", "turn_off"]);
+/** Where each row's ✎ goes: the device's panel (key of its title text), for rows under a device. */
+const DEVICE_PANELS: Record<string, string> = {
+  device: "section_device",
+  boot: "section_power",
+  reload: "section_ready",
+  ready: "section_ready",
+  status: "section_state",
+  turn_on: "section_device",
+  turn_off: "section_device",
+  wait: "section_delays",
+};
+/** ... and the activity's panel for the rest. */
+const ACTIVITY_PANELS: Record<string, string> = {
+  checks: "section_checks",
+  check: "section_checks",
+  steps: "steps",
+  step: "steps",
+  picture: "section_checks",
+  hook: "section_advanced",
+  hook_wait: "section_advanced",
+  already_on: "section_activity_devices",
+};
+
 /** Rows that start a group: a device, the checks, the steps. */
 const HEADERS = new Set(["device", "checks", "steps"]);
 
@@ -297,7 +320,18 @@ export class EasyAvControlFlow extends LitElement {
     return target ? `${row.action} → ${target}` : row.action;
   }
 
-  private _renderRow(row: Row, nested: boolean, showTime: boolean): TemplateResult {
+  /** The panel a row is set in: under a device header that device's, else the activity's. */
+  private _target(row: Row, header: Row | undefined): { device?: string; panel: string } | undefined {
+    const device = (row.device as string | undefined) ?? (header?.kind === "device" ? (header.device as string) : undefined);
+    if (header?.kind === "device" && device && DEVICE_PANELS[row.kind]) return { device, panel: DEVICE_PANELS[row.kind] };
+    if (header?.kind === "steps" && NESTED.has(row.kind)) return { panel: "steps" };
+    if (ACTIVITY_PANELS[row.kind]) return { panel: ACTIVITY_PANELS[row.kind] };
+    if (row.kind === "device" && device) return { device, panel: "section_device" };
+    return undefined;
+  }
+
+  private _renderRow(row: Row, nested: boolean, showTime: boolean, group?: Row): TemplateResult {
+    const target = this._target(row, group);
     const notes = this._notes(row);
     const call = this._call(row);
     const header = HEADERS.has(row.kind);
@@ -320,6 +354,16 @@ export class EasyAvControlFlow extends LitElement {
         ${call ? html`<span class="call">${call}</span>` : nothing}
         ${notes.length ? html`<span class="notes">${notes.map((n) => html`<span class="note">${n}</span>`)}</span>` : nothing}
       </span>
+      ${target
+        ? html`<button
+            class="ltek-act edit"
+            title=${this._t("flow.edit")}
+            aria-label=${this._t("flow.edit")}
+            @click=${() => this.dispatchEvent(new CustomEvent("flow-edit", { detail: target, bubbles: true, composed: true }))}
+          >
+            <ha-icon icon="mdi:pencil-outline"></ha-icon>
+          </button>`
+        : html`<span></span>`}
     </li>`;
   }
 
@@ -328,13 +372,19 @@ export class EasyAvControlFlow extends LitElement {
     const background = rows.filter((row) => row.background);
     let group = false;
     let last = "";
+    let header: Row | undefined;
     const items = foreground.map((row) => {
-      if (HEADERS.has(row.kind)) group = true;
-      else if (!NESTED.has(row.kind) || row.reason === "unused") group = false;
+      if (HEADERS.has(row.kind)) {
+        group = true;
+        header = row;
+      } else if (!NESTED.has(row.kind) || row.reason === "unused") {
+        group = false;
+        header = undefined;
+      }
       const time = this._time(row.at);
       const show = time !== last || row.kind === "state";
       last = time;
-      return this._renderRow(row, group && !HEADERS.has(row.kind), show);
+      return this._renderRow(row, group && !HEADERS.has(row.kind), show, header);
     });
     return html`<ol class="flow">${items}</ol>
       ${background.length
@@ -412,6 +462,7 @@ export class EasyAvControlFlow extends LitElement {
 
   static styles = [
     ltekTokens,
+    ltekPanelScale,
     ltekChrome,
     css`
     :host {
@@ -454,7 +505,7 @@ export class EasyAvControlFlow extends LitElement {
     }
     ol.flow li {
       display: grid;
-      grid-template-columns: 64px 24px minmax(0, 1fr);
+      grid-template-columns: 64px 24px minmax(0, 1fr) 22px;
       gap: 4px 10px;
       align-items: start;
       padding: 6px 0;
@@ -464,7 +515,7 @@ export class EasyAvControlFlow extends LitElement {
       border-top: none;
     }
     ol.flow li.nested {
-      grid-template-columns: 64px 40px minmax(0, 1fr);
+      grid-template-columns: 64px 40px minmax(0, 1fr) 22px;
       border-top: none;
       padding-top: 2px;
     }
@@ -473,7 +524,7 @@ export class EasyAvControlFlow extends LitElement {
     }
     .time {
       color: var(--state-icon-active-color, var(--state-icon-color, var(--secondary-text-color)));
-      font-size: 0.85em;
+      font-size: var(--ltek-fs-small);
       font-variant-numeric: tabular-nums;
       white-space: nowrap;
       text-align: right;
@@ -500,7 +551,7 @@ export class EasyAvControlFlow extends LitElement {
       border-radius: 50%;
       border: 1px solid var(--accent-color, var(--ltek-c-accent));
       color: var(--accent-color, var(--ltek-c-accent));
-      font-size: 0.8em;
+      font-size: var(--ltek-fs-small);
       font-weight: 500;
       box-sizing: border-box;
     }
@@ -515,9 +566,18 @@ export class EasyAvControlFlow extends LitElement {
       min-width: 0;
       overflow-wrap: anywhere;
     }
+    button.edit {
+      --mdc-icon-size: 16px;
+      padding-top: 2px;
+      opacity: 0.55;
+    }
+    li:hover button.edit {
+      opacity: 1;
+      color: var(--ltek-c-accent);
+    }
     .call {
       font-family: var(--code-font-family, monospace);
-      font-size: 0.8em;
+      font-size: var(--ltek-fs-small);
       color: var(--secondary-text-color);
     }
     .notes {
@@ -526,20 +586,20 @@ export class EasyAvControlFlow extends LitElement {
       gap: 4px;
     }
     .note {
-      font-size: 0.8em;
+      font-size: var(--ltek-fs-small);
       padding: 1px 8px;
       border-radius: 10px;
       background: var(--secondary-background-color);
       color: var(--secondary-text-color);
     }
     h4 {
-      font-size: 0.95em;
+      font-size: var(--ltek-fs-group);
       font-weight: 500;
       margin: 16px 0 4px;
     }
     .summary {
       margin: 12px 0 0;
-      font-size: 0.9em;
+      font-size: var(--ltek-fs-body);
       color: var(--secondary-text-color);
       line-height: 1.4;
     }
@@ -553,14 +613,14 @@ export class EasyAvControlFlow extends LitElement {
     }
     @media (max-width: 450px) {
       ol.flow li {
-        grid-template-columns: 58px 22px minmax(0, 1fr);
+        grid-template-columns: 58px 22px minmax(0, 1fr) 22px;
         gap: 4px 6px;
       }
       ol.flow li.nested {
-        grid-template-columns: 58px 32px minmax(0, 1fr);
+        grid-template-columns: 58px 32px minmax(0, 1fr) 22px;
       }
       .time {
-        font-size: 0.75em;
+        font-size: var(--ltek-fs-small);
       }
     }
   `,

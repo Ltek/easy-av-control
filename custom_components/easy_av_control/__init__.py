@@ -20,7 +20,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import async_get_integration
 
-from . import websocket
+from . import sidebar, websocket
 from .card_resource import (
     async_register_card_resource,
     async_remove_card_resource,
@@ -41,7 +41,6 @@ from .const import (
     LOCAL_DIR,
     LOCAL_URL_BASE,
     PANEL_FILENAME,
-    PANEL_URL_PATH,
     SERVICE_RELOAD,
     SERVICE_SEND_COMMAND,
     SERVICE_START_ACTIVITY,
@@ -54,6 +53,7 @@ from .detect import async_get_seen
 from .migration import migrate_checks, migrate_v1_to_v2
 from .model import expected_unique_ids
 from .profile_library import async_get_library
+from .sidebar import async_register_panel
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -78,6 +78,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the services, the websocket API and the remote control card."""
     _register_services(hass)
     websocket.async_register(hass)
+    sidebar.async_setup_ws(hass)
     await _async_register_frontend(hass)
     return True
 
@@ -176,7 +177,6 @@ async def _async_register_frontend(hass: HomeAssistant) -> None:
     if "frontend" not in hass.config.components:
         return
     # Imported late: the frontend is only an after-dependency
-    from homeassistant.components import panel_custom
     from homeassistant.components.frontend import add_extra_js_url
 
     version = (await async_get_integration(hass, DOMAIN)).version
@@ -200,16 +200,7 @@ async def _async_register_frontend(hass: HomeAssistant) -> None:
     if not await async_register_card_resource(hass, _card_bases(), card_url):
         add_extra_js_url(hass, card_url)
     if PANEL_FILENAME in mtimes:
-        await panel_custom.async_register_panel(
-            hass,
-            frontend_url_path=PANEL_URL_PATH,
-            webcomponent_name="easy-av-control-panel",
-            sidebar_title="Easy AV Control",
-            sidebar_icon="mdi:remote-tv",
-            module_url=url(PANEL_FILENAME),
-            require_admin=True,
-            config_panel_domain=DOMAIN,
-        )
+        await async_register_panel(hass, url(PANEL_FILENAME))
 
 
 def _card_bases() -> tuple[str, str]:

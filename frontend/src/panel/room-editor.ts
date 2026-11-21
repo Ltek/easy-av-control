@@ -51,7 +51,8 @@ import {
   type ProfileView,
 } from "./device-state";
 import "./flow-view";
-import { ltekChrome, ltekTokens } from "./ltek-styles";
+import "./ltek-form";
+import { ltekChrome, ltekPanelScale, ltekTokens } from "./ltek-styles";
 import "./remote-preview";
 import { t } from "./strings";
 
@@ -129,7 +130,7 @@ export class EasyAvControlRoomEditor extends LitElement {
   /** All profiles (profiles/list), for the profile picker; given by the panel */
   declare profiles: ProfileView[];
   /** From the menu: open this activity, at its Flow when ``flow``; ``n`` makes each click a change */
-  declare jump?: { activity: string; flow: boolean; n: number };
+  declare jump?: { activity?: string; flow: boolean; n: number };
   /** Devices whose outlet is ticked but not picked yet */
   declare _powerOn: Set<string>;
   /** The outlet a device had when it was unticked, to bring back when it is ticked again */
@@ -179,7 +180,10 @@ export class EasyAvControlRoomEditor extends LitElement {
       this._notice = undefined;
     }
     const jump = this.jump;
-    if (changed.has("jump") && jump && this.room?.activities?.[jump.activity]) {
+    if (changed.has("jump") && jump && !jump.activity) {
+      this._view = { kind: "list" };
+      this._notice = undefined;
+    } else if (changed.has("jump") && jump?.activity && this.room?.activities?.[jump.activity]) {
       this._view = { kind: "activity", id: jump.activity };
       this._notice = undefined;
       if (jump.flow) {
@@ -187,7 +191,7 @@ export class EasyAvControlRoomEditor extends LitElement {
       }
       window.scrollTo({ top: 0 });
     }
-    if (changed.has("_view") || changed.has("roomId")) {
+    if (changed.has("_view") || changed.has("roomId") || changed.has("jump")) {
       this.dispatchEvent(new CustomEvent("view-changed", { detail: { view: this._view } }));
     }
   }
@@ -231,7 +235,7 @@ export class EasyAvControlRoomEditor extends LitElement {
       ...Object.entries(this.room.activities ?? {}).map(([id, a]) => ({ value: id, label: a.name ?? id })),
     ];
     return html`
-      <ha-form
+      <ltek-form
         .hass=${this.hass}
         .data=${{
           name: this.room.name ?? "",
@@ -256,7 +260,7 @@ export class EasyAvControlRoomEditor extends LitElement {
             }),
           );
         }}
-      ></ha-form>
+      ></ltek-form>
 
       <div class="tabs" role="tablist">
         ${(["devices", "activities", "yaml"] as Tab[]).map(
@@ -434,7 +438,7 @@ export class EasyAvControlRoomEditor extends LitElement {
 
   /** One card's ha-form; its values are merged into the whole device. */
   private _deviceForm(id: string, data: Obj, schema: Obj[], disabled = false): TemplateResult {
-    return html`<ha-form
+    return html`<ltek-form
       .hass=${this.hass}
       .disabled=${disabled}
       .data=${data}
@@ -442,7 +446,7 @@ export class EasyAvControlRoomEditor extends LitElement {
       .computeLabel=${this._label}
       .computeHelper=${this._helper}
       @value-changed=${(ev: CustomEvent) => this._deviceChanged(id, { ...data, ...(ev.detail.value as Obj) })}
-    ></ha-form>`;
+    ></ltek-form>`;
   }
 
   /** The remote entity of the same device, e.g. remote.apple_tv for media_player.apple_tv. */
@@ -641,7 +645,7 @@ export class EasyAvControlRoomEditor extends LitElement {
     ];
     return html`${this._renderDetected(id, device, detect)}
       ${detect && !hasStatus ? html`<p class="ltek-hint">${this._t("state_fixed_only")}</p>` : nothing}
-      <ha-form
+      <ltek-form
         .hass=${this.hass}
         .data=${data}
         .schema=${schema}
@@ -651,7 +655,7 @@ export class EasyAvControlRoomEditor extends LitElement {
           const next = applyStateForm(device, { ...data, ...(ev.detail.value as Obj) }, detect);
           this._emit({ ...this.room, devices: { ...this.room.devices, [id]: next } });
         }}
-      ></ha-form>`;
+      ></ltek-form>`;
   }
 
   /** What the device's profile found, with one click to use it. */
@@ -889,7 +893,7 @@ export class EasyAvControlRoomEditor extends LitElement {
       ${this._card(
         this._t("section_general"),
         this._t("hint_general"),
-        html`<ha-form
+        html`<ltek-form
           .hass=${this.hass}
           .data=${{ name: activity.name, icon: activity.icon, order: activity.order }}
           .schema=${[
@@ -902,7 +906,7 @@ export class EasyAvControlRoomEditor extends LitElement {
             const v = ev.detail.value as Obj;
             this._activityGeneralChanged(id, activity, v);
           }}
-        ></ha-form>`,
+        ></ltek-form>`,
       )}
 
       ${this._card(
@@ -932,21 +936,22 @@ export class EasyAvControlRoomEditor extends LitElement {
           .room=${this.room}
           .roomId=${this.roomId}
           .activityId=${id}
+          @flow-edit=${(ev: CustomEvent<{ device?: string; panel: string }>) => this._flowEdit(ev.detail)}
         ></easy-av-control-flow>`,
       )}
 
       ${this._advanced(
         this._t("hint_activity_advanced"),
         html`<p class="ltek-hint">${this._t("activity_id_hint", { id })}</p>
-          <ha-form
+          <ltek-form
             .hass=${this.hass}
             .data=${{ buttons: extraButtons, activity_commands: activity.commands }}
             .schema=${[{ name: "activity_commands", selector: { object: {} } }]}
             .computeLabel=${this._label}
             @value-changed=${(ev: CustomEvent) => this._extrasChanged(id, activity, ev.detail.value as Obj)}
-          ></ha-form>
+          ></ltek-form>
           <h4>${this._t("hooks")}</h4>
-          <ha-form
+          <ltek-form
             .hass=${this.hass}
             .data=${{ on_start: activity.on_start ?? [], on_stop: activity.on_stop ?? [] }}
             .schema=${[
@@ -958,14 +963,14 @@ export class EasyAvControlRoomEditor extends LitElement {
               const v = ev.detail.value as Obj;
               this._setActivity(id, { ...activity, on_start: v.on_start as unknown[], on_stop: v.on_stop as unknown[] });
             }}
-          ></ha-form>`,
+          ></ltek-form>`,
       )}
 
       ${this._cardDivider()}
       ${this._card(
         this._t("remote"),
         this._t("hint_remote"),
-        html`<ha-form
+        html`<ltek-form
           .hass=${this.hass}
           .data=${routes}
           .schema=${[
@@ -983,7 +988,7 @@ export class EasyAvControlRoomEditor extends LitElement {
           .computeLabel=${this._label}
           .computeHelper=${this._helper}
           @value-changed=${(ev: CustomEvent) => this._routesChanged(id, activity, ev.detail.value as Obj)}
-        ></ha-form>`,
+        ></ltek-form>`,
       )}
 
       ${this._card(this._t("quick_select"), this._t("quick_select_hint"), this._renderQuickSelect(id, activity))}
@@ -1006,16 +1011,30 @@ export class EasyAvControlRoomEditor extends LitElement {
         "mdi:gesture-tap-box",
         this._t("card_extra"),
         this._t("hint_card_extra"),
-        html`<ha-form
+        html`<ltek-form
           .hass=${this.hass}
           .data=${{ buttons: extraButtons, activity_commands: activity.commands }}
           .schema=${[{ name: "buttons", selector: { object: {} } }]}
           .computeLabel=${this._label}
           @value-changed=${(ev: CustomEvent) => this._extrasChanged(id, activity, ev.detail.value as Obj)}
-        ></ha-form>`,
+        ></ltek-form>`,
         false,
       )}
     `;
+  }
+
+  /** A Flow row's ✎: open the panel it is set in, on the device's page or this activity's. */
+  private _flowEdit(target: { device?: string; panel: string }): void {
+    const title = this._t(target.panel);
+    if (target.device && this.room.devices?.[target.device]) {
+      this._view = { kind: "device", id: target.device };
+      this._openPanel.set(this._pageKey(), `device:${title}`);
+    } else {
+      this._openPanel.set(this._pageKey(), `activity:${title}`);
+      this.requestUpdate();
+    }
+    this._notice = undefined;
+    window.scrollTo({ top: 0 });
   }
 
   /** The line that starts the Remote control card's settings. */
@@ -1093,7 +1112,7 @@ export class EasyAvControlRoomEditor extends LitElement {
         <span class="title">${index + 1}. ${this._t(`step.${step.type}`)}</span>
         ${this._moveButtons(steps, index, setSteps)}
       </div>
-      <ha-form
+      <ltek-form
         .hass=${this.hass}
         .data=${step}
         .schema=${stepSchema(this.hass, this.room, step, (k) => this._t(k), this.sources, this.soundModes)}
@@ -1103,7 +1122,7 @@ export class EasyAvControlRoomEditor extends LitElement {
           list[index] = clean({ ...(ev.detail.value as Step), type: step.type });
           setSteps(list);
         }}
-      ></ha-form>
+      ></ltek-form>
     </div>`;
   }
 
@@ -1175,13 +1194,13 @@ export class EasyAvControlRoomEditor extends LitElement {
             </select>
           </div>
           ${own
-            ? html`<ha-form
+            ? html`<ltek-form
                   .hass=${this.hass}
                   .data=${{ entity_id: check.entity_id || undefined }}
                   .schema=${[{ name: "entity_id", selector: { entity: {} } }]}
                   .computeLabel=${() => this._t("check_entity_label")}
                   @value-changed=${(ev: CustomEvent) => update({ entity_id: ((ev.detail.value as Obj).entity_id as string) ?? "" })}
-                ></ha-form>
+                ></ltek-form>
                 <div class="ltek-row">
                   <label class="lbl">${this._t("check_states")}</label>
                   <input
@@ -1195,7 +1214,7 @@ export class EasyAvControlRoomEditor extends LitElement {
                   />
                 </div>`
             : this._checkNote(device)}
-          <ha-form
+          <ltek-form
             .hass=${this.hass}
             .data=${{ timeout: check.timeout, on_failure: check.on_failure ?? "warn" }}
             .schema=${[
@@ -1219,7 +1238,7 @@ export class EasyAvControlRoomEditor extends LitElement {
               const v = ev.detail.value as Obj;
               update({ timeout: v.timeout, on_failure: v.on_failure === "stop" ? "stop" : undefined });
             }}
-          ></ha-form>
+          ></ltek-form>
         </div>`;
       })}
     </div>`;
@@ -1275,7 +1294,7 @@ export class EasyAvControlRoomEditor extends LitElement {
             <span class="title">${(button.name as string) || (button.source as string) || ""}</span>
             ${this._moveButtons(quick, i, setQuick)}
           </div>
-          <ha-form
+          <ltek-form
             .hass=${this.hass}
             .data=${{ device: button.device, source: button.source, label: button.name, icon: button.icon }}
             .schema=${[
@@ -1297,7 +1316,7 @@ export class EasyAvControlRoomEditor extends LitElement {
               list[i] = clean({ device: v.device, source: v.source ?? "", name: v.label, icon: v.icon }, ["source"]);
               setQuick(list);
             }}
-          ></ha-form>
+          ></ltek-form>
         </div>`;
       })}
       ${players.length
@@ -1331,7 +1350,7 @@ export class EasyAvControlRoomEditor extends LitElement {
 
   /** "From the devices"/"automatic" or a choice, as a dropdown. */
   private _settingsMode(chosen: boolean, auto: string, set: (chosen: boolean) => void): TemplateResult {
-    return html`<ha-form
+    return html`<ltek-form
       .hass=${this.hass}
       .data=${{ settings_mode: chosen ? "chosen" : "auto" }}
       .schema=${[
@@ -1356,7 +1375,7 @@ export class EasyAvControlRoomEditor extends LitElement {
           set(next);
         }
       }}
-    ></ha-form>`;
+    ></ltek-form>`;
   }
 
   /**
@@ -1391,7 +1410,7 @@ export class EasyAvControlRoomEditor extends LitElement {
           <span class="title">${this._describeSetting(item, devices !== null)}</span>
           ${this._moveButtons(items, i, setItems)}
         </div>
-        <ha-form
+        <ltek-form
           .hass=${this.hass}
           .data=${{ device: item.device, setting: kind, entity, name: item.name, options: item.options ?? [] }}
           .schema=${[
@@ -1435,7 +1454,7 @@ export class EasyAvControlRoomEditor extends LitElement {
                 : clean({ ...head, setting: next, options: v.options });
             setItems(list);
           }}
-        ></ha-form>
+        ></ltek-form>
       </div>`;
     })}`;
   }
@@ -1572,7 +1591,7 @@ export class EasyAvControlRoomEditor extends LitElement {
 
   private _renderYaml(): TemplateResult {
     return html`<p class="ltek-hint">${this._t("yaml_intro")}</p>
-      <ha-form
+      <ltek-form
         .hass=${this.hass}
         .data=${{ yaml: this.room }}
         .schema=${[{ name: "yaml", selector: { object: {} } }]}
@@ -1583,7 +1602,7 @@ export class EasyAvControlRoomEditor extends LitElement {
             this._emit(value as Room);
           }
         }}
-      ></ha-form>`;
+      ></ltek-form>`;
   }
 
   // ------------------------------------------------------------------
@@ -1616,7 +1635,7 @@ export class EasyAvControlRoomEditor extends LitElement {
     options: { value: string; label: string }[],
     pick: (value: string) => void,
   ): TemplateResult {
-    return html`<ha-form
+    return html`<ltek-form
       class="picker"
       .hass=${this.hass}
       .data=${{ pick: undefined }}
@@ -1629,11 +1648,12 @@ export class EasyAvControlRoomEditor extends LitElement {
           (ev.target as LitElement).requestUpdate();
         }
       }}
-    ></ha-form>`;
+    ></ltek-form>`;
   }
 
   static styles = [
     ltekTokens,
+    ltekPanelScale,
     ltekChrome,
     css`
     :host {
@@ -1647,7 +1667,7 @@ export class EasyAvControlRoomEditor extends LitElement {
     .hint,
     .sub {
       color: var(--secondary-text-color);
-      font-size: 0.9em;
+      font-size: var(--ltek-fs-body);
     }
     p.hint {
       margin: 0 0 12px;
@@ -1719,7 +1739,7 @@ export class EasyAvControlRoomEditor extends LitElement {
     }
     .warn {
       color: var(--error-color, #db4437);
-      font-size: 0.85em;
+      font-size: var(--ltek-fs-small);
     }
     .title {
       font-weight: 500;

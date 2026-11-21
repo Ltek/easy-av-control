@@ -11,7 +11,8 @@ import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 import type { HomeAssistant } from "../types";
 import { learnGroups, profileSummary, type ProfileView } from "./device-state";
 import type { Obj } from "./model";
-import { ltekChrome, ltekTokens } from "./ltek-styles";
+import { ltekChrome, ltekPanelScale, ltekTokens } from "./ltek-styles";
+import "./ltek-form";
 import "./profile-form";
 import { t } from "./strings";
 
@@ -312,7 +313,7 @@ export class EasyAvControlProfiles extends LitElement {
         ? html`<details class="ltek-sec" open>
             <summary><ha-icon icon="mdi:code-braces"></ha-icon>YAML<ha-icon class="chev" icon="mdi:chevron-down"></ha-icon></summary>
             <div class="ltek-body">
-              <ha-form
+              <ltek-form
                 .hass=${this.hass}
                 .data=${{ yaml: editing.data }}
                 .schema=${[{ name: "yaml", selector: { object: {} } }]}
@@ -323,7 +324,7 @@ export class EasyAvControlProfiles extends LitElement {
                   const yaml = (ev.detail.value as { yaml?: Obj }).yaml;
                   if (yaml && typeof yaml === "object") this._editing = { ...editing, data: yaml, error: undefined };
                 }}
-              ></ha-form>
+              ></ltek-form>
             </div>
           </details>`
         : html`<easy-av-control-profile-form
@@ -450,6 +451,7 @@ export class EasyAvControlProfiles extends LitElement {
 
   static styles = [
     ltekTokens,
+    ltekPanelScale,
     ltekChrome,
     css`
       :host {

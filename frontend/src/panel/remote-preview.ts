@@ -12,7 +12,7 @@ import { commandLabel } from "../labels";
 import type { HomeAssistant, RoomView } from "../types";
 import type { Room } from "./model";
 import { t } from "./strings";
-import { ltekChrome, ltekTokens } from "./ltek-styles";
+import { ltekChrome, ltekPanelScale, ltekTokens } from "./ltek-styles";
 
 
 type Target = {
@@ -240,6 +240,7 @@ export class EasyAvControlRemotePreview extends LitElement {
 
   static styles = [
     ltekTokens,
+    ltekPanelScale,
     ltekChrome,
     css`
     :host {
@@ -280,15 +281,15 @@ export class EasyAvControlRemotePreview extends LitElement {
     }
     .how {
       font-family: var(--code-font-family, monospace);
-      font-size: 0.85em;
+      font-size: var(--ltek-fs-small);
     }
     .note {
-      font-size: 0.85em;
+      font-size: var(--ltek-fs-small);
       color: var(--secondary-text-color);
     }
     .dead {
       color: var(--error-color, #db4437);
-      font-size: 0.9em;
+      font-size: var(--ltek-fs-body);
       margin-bottom: 12px;
     }
     .dead ul {
@@ -296,7 +297,7 @@ export class EasyAvControlRemotePreview extends LitElement {
       padding-left: 20px;
     }
     h4 {
-      font-size: 0.95em;
+      font-size: var(--ltek-fs-group);
       font-weight: 500;
       margin: 0 0 6px;
     }
@@ -323,7 +324,7 @@ export class EasyAvControlRemotePreview extends LitElement {
     }
     .keys {
       grid-column: 2;
-      font-size: 0.85em;
+      font-size: var(--ltek-fs-small);
       color: var(--secondary-text-color);
     }
     .error {

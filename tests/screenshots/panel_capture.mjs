@@ -114,6 +114,12 @@ async function shotBoth(name, prepare) {
 
 await openPanel();
 await shotBoth('devices');
+// The Guide opens in the right pane; Close goes back
+await page.locator('easy-av-control-panel nav button', { hasText: 'Guide' }).click();
+await settle(1000);
+await shotBoth('guide');
+await page.locator('easy-av-control-guide button', { hasText: 'Close' }).click();
+await settle(800);
 
 // A device: the Device state panel with what was detected
 await page.getByRole('button', { name: /Projector/ }).first().click();

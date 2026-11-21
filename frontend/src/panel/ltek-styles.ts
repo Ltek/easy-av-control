@@ -390,7 +390,7 @@ export const ltekChrome = css`
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    font-size: 0.82rem;
+    font-size: 13px;
     font-weight: 600;
     color: #fff;
     text-decoration: none;
@@ -403,7 +403,7 @@ export const ltekChrome = css`
     filter: brightness(1.1);
   }
   .ltek-issue {
-    font-size: 0.78rem;
+    font-size: 12px;
     color: var(--primary-color);
     text-decoration: none;
     padding: 4px 10px;
@@ -416,6 +416,22 @@ export const ltekChrome = css`
   .ltek-foot {
     color: var(--ltek-c-muted);
     font-size: var(--ltek-fs-tiny);
+  }
+`;
+
+/**
+ * Easy AV Control's panel is a full page, not a card editor: its text is one step larger (user's choice,
+ * 2026-11-21; nothing below 10px). Kept outside the shared token block, which stays identical to the cards.
+ */
+export const ltekPanelScale = css`
+  :host {
+    --ltek-fs-panel-title: 17px;
+    --ltek-fs-header: 16px;
+    --ltek-fs-group: 15px;
+    --ltek-fs-label: 14px;
+    --ltek-fs-body: 13px;
+    --ltek-fs-small: 12px;
+    --ltek-fs-tiny: 11px;
   }
 `;
 
