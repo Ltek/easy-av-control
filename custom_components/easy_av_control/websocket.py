@@ -211,7 +211,12 @@ def ws_config_get(
     rooms = dict(entry.data.get(CONF_ROOMS) or {})
     connection.send_result(
         msg["id"],
-        {"entry_id": entry.entry_id, "rooms": rooms, "revision": revision(rooms)},
+        {
+            "entry_id": entry.entry_id,
+            "rooms": rooms,
+            "revision": revision(rooms),
+            "version": hass.data.get(f"{DOMAIN}_version"),
+        },
     )
 
 

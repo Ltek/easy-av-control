@@ -26,7 +26,7 @@ from custom_components.easy_av_control.detect import (
     apply_detect,
     detect_all,
     draft_profile,
-    starter_activities,
+    starter_activity,
 )
 from custom_components.easy_av_control.device_profiles import load_profiles
 from custom_components.easy_av_control.model import async_validate_config
@@ -217,23 +217,33 @@ async def test_apply_puts_devices_in_the_power_on_order_with_the_picture_check(h
     await async_validate_config(hass, {"rooms": out})
 
 
-async def test_apply_creates_rooms_with_starter_activities(hass: HomeAssistant, home):
+async def test_apply_creates_one_activity_per_room_with_the_selected_devices(hass: HomeAssistant, home):
     profiles = load_profiles()
     result = detect_all(hass, profiles, {})
     out = apply_detect(hass, profiles, {}, {"new": result["new"], "starter": True})
     assert set(out) == {"theater", "living_room"}
     living = out["living_room"]
     assert living["area_id"] == home["living"] and living["name"] == "Living Room"
-    # one activity per source (the TV), with the room's audio first
+    # named after the room; audio (middle) before the TV (late)
     assert living["activities"] == {
-        "living_room_tv": {"name": "Living Room TV", "order": 1,
-                           "devices": ["ceiling", "deck", "living_room_tv"], "steps": []}
+        "living_room": {"name": "Living Room", "order": 1,
+                        "devices": ["ceiling", "deck", "living_room_tv"], "steps": []}
     }
-    theater = out["theater"]
-    # no source in the theater: one activity with everything, Lumagen's picture check last
-    assert list(theater["activities"]) == ["on"]
-    assert theater["activities"]["on"]["steps"] == [{"type": "wait_picture", "device": "lumagen"}]
+    theater = out["theater"]["activities"]["theater"]
+    assert theater["devices"] == ["jvc_projector", "lumagen", "stormaudio_isp"]  # early, then middle
+    assert theater["steps"] == [{"type": "wait_picture", "device": "lumagen"}]
     await async_validate_config(hass, {"rooms": out})
+
+
+async def test_starter_uses_only_the_selected_devices_and_existing_rooms_with_none(hass: HomeAssistant, home):
+    profiles = load_profiles()
+    rooms = {"kino": {"name": "Kino", "area_id": home["theater"], "devices": {}, "activities": {}}}
+    jvc = _by_entity(detect_all(hass, profiles, rooms)["new"], home["jvc"])
+    out = apply_detect(hass, profiles, rooms, {"new": [jvc], "starter": True})
+    assert out["kino"]["activities"] == {"kino": {"name": "Kino", "order": 1, "devices": ["jvc_projector"], "steps": []}}
+    # a room that has activities gets none
+    out = apply_detect(hass, profiles, _rooms(home), {"new": [{**jvc, "activities": []}], "starter": True})
+    assert list(out["kino"]["activities"]) == ["movie"]
 
 
 async def test_apply_without_starter_leaves_new_rooms_without_activities(hass: HomeAssistant, home):
@@ -274,8 +284,8 @@ async def test_apply_replacements(hass: HomeAssistant):
     assert out["r"]["devices"]["tv"] == {"entity_id": "media_player.a", "remote_entity": "remote.b"}
 
 
-def test_starter_without_devices_is_empty(hass: HomeAssistant):
-    assert starter_activities(hass, {}, {"devices": {}}, set()) == {"on": {"name": "On", "order": 1, "devices": [], "steps": []}}
+def test_starter_activity_without_a_room_name(hass: HomeAssistant):
+    assert starter_activity(hass, {}, {"devices": {}}, [], set()) == {"name": "On", "order": 1, "devices": [], "steps": []}
 
 
 # ------------------------------------------------------------------------------------------- + Profile

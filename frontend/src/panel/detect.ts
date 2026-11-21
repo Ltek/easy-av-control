@@ -52,19 +52,24 @@ export interface DetectResult {
   unmatched: string[];
 }
 
-interface Pick {
-  on: boolean;
+/** The choices for one area's detected devices */
+interface AreaPick {
   /** an existing room id, or "new:<id>" for a room this creates */
   target: string;
   activities: Set<string>;
+  /** the ticked devices (their keys) */
+  devices: Set<string>;
 }
+
+const NO_AREA = "__none";
+const areaOf = (item: NewItem) => item.area_id ?? NO_AREA;
 
 export class EasyAvControlDetect extends LitElement {
   static properties = {
     hass: { attribute: false },
     rooms: { attribute: false },
     _result: { state: true },
-    _picks: { state: true },
+    _areas: { state: true },
     _ticked: { state: true },
     _starter: { state: true },
     _error: { state: true },
@@ -73,7 +78,7 @@ export class EasyAvControlDetect extends LitElement {
   declare hass: HomeAssistant;
   declare rooms: Rooms;
   declare _result?: DetectResult;
-  declare _picks: Map<string, Pick>;
+  declare _areas: Map<string, AreaPick>;
   /** "better:<i>", "gone:<i>", "renamed:<i>" that are ticked */
   declare _ticked: Set<string>;
   declare _starter: boolean;
@@ -82,9 +87,9 @@ export class EasyAvControlDetect extends LitElement {
 
   constructor() {
     super();
-    this._picks = new Map();
+    this._areas = new Map();
     this._ticked = new Set();
-    this._starter = true;
+    this._starter = false;
   }
 
   private _t(key: string, params?: Record<string, string>): string {
@@ -103,18 +108,20 @@ export class EasyAvControlDetect extends LitElement {
     this._error = undefined;
     try {
       const result = await this.hass.callWS<DetectResult>({ type: "easy_av_control/config/detect_all", rooms: this.rooms });
-      const picks = new Map<string, Pick>();
+      // Nothing ticked: you choose. Only renamed entities are ticked (the same entity under a new ID).
+      const areas = new Map<string, AreaPick>();
       for (const item of result.new) {
-        picks.set(item.key, {
-          on: true,
-          target: item.room ?? `new:${item.new_room}`,
-          activities: new Set(item.activities),
-        });
+        if (!areas.has(areaOf(item))) {
+          areas.set(areaOf(item), {
+            target: item.room ?? `new:${item.new_room}`,
+            activities: new Set(item.activities),
+            devices: new Set(),
+          });
+        }
       }
       const ticked = new Set<string>();
-      result.gone.forEach((g, i) => g.replacement && ticked.add(`gone:${i}`));
       result.renamed.forEach((_, i) => ticked.add(`renamed:${i}`));
-      this._picks = picks;
+      this._areas = areas;
       this._ticked = ticked;
       this._result = result;
     } catch (err) {
@@ -129,10 +136,21 @@ export class EasyAvControlDetect extends LitElement {
     this._ticked = next;
   }
 
-  private _setPick(key: string, pick: Partial<Pick>): void {
-    const next = new Map(this._picks);
-    next.set(key, { ...next.get(key)!, ...pick });
-    this._picks = next;
+  private _setArea(area: string, pick: Partial<AreaPick>): void {
+    const next = new Map(this._areas);
+    next.set(area, { ...next.get(area)!, ...pick });
+    this._areas = next;
+  }
+
+  private _toggleDevice(area: string, key: string): void {
+    const devices = new Set(this._areas.get(area)!.devices);
+    if (devices.has(key)) devices.delete(key);
+    else devices.add(key);
+    this._setArea(area, { devices });
+  }
+
+  private get _anyTicked(): boolean {
+    return this._ticked.size > 0 || [...this._areas.values()].some((a) => a.devices.size > 0);
   }
 
   private _name(entityId: string | null): string {
@@ -144,9 +162,9 @@ export class EasyAvControlDetect extends LitElement {
     const r = this._result!;
     const choices = {
       new: r.new
-        .filter((item) => this._picks.get(item.key)?.on)
+        .filter((item) => this._areas.get(areaOf(item))?.devices.has(item.key))
         .map((item) => {
-          const pick = this._picks.get(item.key)!;
+          const pick = this._areas.get(areaOf(item))!;
           const isNew = pick.target.startsWith("new:");
           const proposal = r.new.find((other) => `new:${other.new_room}` === pick.target);
           return {
@@ -181,17 +199,23 @@ export class EasyAvControlDetect extends LitElement {
       return html`<p class="ltek-hint">${this._t("detect_running")}</p>`;
     }
     const empty = !r.new.length && !r.better.length && !r.gone.length && !r.renamed.length;
-    const newRooms = r.new.some((item) => this._picks.get(item.key)?.on && this._picks.get(item.key)!.target.startsWith("new:"));
+    const groups = [...new Set(r.new.map(areaOf))];
     return html`
       <p class="ltek-hint">${this._t("detect_intro")}</p>
       ${empty ? html`<p class="ltek-hint ok">${this._t("detect_nothing")}</p>` : nothing}
+      <div class="ltek-buttons bar">
+        <button class="ltek-btn primary" ?disabled=${!this._anyTicked} @click=${this._apply}>${this._t("detect_apply")}</button>
+        <button class="ltek-btn" @click=${this._run}><ha-icon icon="mdi:refresh"></ha-icon> ${this._t("detect_again")}</button>
+        ${r.new.length
+          ? html`<label class="check">
+              <input type="checkbox" .checked=${this._starter} @change=${(e: Event) => (this._starter = (e.target as HTMLInputElement).checked)} />
+              ${this._t("detect_starter")}
+            </label>`
+          : nothing}
+      </div>
       ${r.new.length
         ? this._section("new", "mdi:plus-circle-outline", this._t("detect_new"), this._t("detect_new_hint"),
-            html`${r.new.map((item) => this._renderNew(item))}
-              ${newRooms
-                ? html`<label class="check"><input type="checkbox" .checked=${this._starter}
-                    @change=${(e: Event) => (this._starter = (e.target as HTMLInputElement).checked)} />${this._t("detect_starter")}</label>`
-                : nothing}`)
+            html`${groups.map((area) => this._renderArea(area, r.new.filter((i) => areaOf(i) === area)))}`)
         : nothing}
       ${r.better.length
         ? this._section("better", "mdi:arrow-up-bold-circle-outline", this._t("detect_better"), this._t("detect_better_hint"),
@@ -220,10 +244,7 @@ export class EasyAvControlDetect extends LitElement {
                 this.dispatchEvent(new CustomEvent("create-profile", { detail: { integration } }))}>${this._t("detect_create_profile")}</button>
             </div>`)}</div>`)
         : nothing}
-      <div class="ltek-buttons bar">
-        <button class="ltek-btn primary" ?disabled=${empty} @click=${this._apply}>${this._t("detect_apply")}</button>
-        <button class="ltek-btn" @click=${this._run}><ha-icon icon="mdi:refresh"></ha-icon> ${this._t("detect_again")}</button>
-      </div>
+
     `;
   }
 
@@ -242,9 +263,10 @@ export class EasyAvControlDetect extends LitElement {
     </label>`;
   }
 
-  private _renderNew(item: NewItem): TemplateResult {
-    const pick = this._picks.get(item.key)!;
+  private _renderArea(area: string, items: NewItem[]): TemplateResult {
+    const pick = this._areas.get(area)!;
     const r = this._result!;
+    const first = items[0];
     const proposed = [...new Map(r.new.filter((i) => i.new_room).map((i) => [i.new_room!, i.new_room_name ?? i.new_room!])).entries()];
     const targets = [
       ...Object.entries(this.rooms).map(([id, room]) => ({ value: id, label: room.name ?? id })),
@@ -252,40 +274,75 @@ export class EasyAvControlDetect extends LitElement {
     ];
     const room = pick.target.startsWith("new:") ? undefined : this.rooms[pick.target];
     const activities = Object.entries(room?.activities ?? {});
-    const integrations = item.integrations.length > 1 ? item.integrations.join(", ") : item.integration;
-    return html`<div class="ltek-item new ${pick.on ? "open" : ""}">
-      <input type="checkbox" .checked=${pick.on} @change=${() => this._setPick(item.key, { on: !pick.on })} />
+    const all = items.every((i) => pick.devices.has(i.key));
+    return html`<details class="ltek-sub area" open>
+      <summary>
+        <ha-icon icon="mdi:texture-box"></ha-icon>${first.area_name ?? this._t("detect_no_area")}
+        <span class="count">${pick.devices.size} / ${items.length}</span>
+        <ha-icon class="chev" icon="mdi:chevron-down"></ha-icon>
+      </summary>
+      <div class="ltek-sub-body">
+        <div class="ltek-row">
+          <label class="lbl">${this._t("detect_room")}</label>
+          <select @change=${(e: Event) => {
+            const target = (e.target as HTMLSelectElement).value;
+            const acts = target.startsWith("new:") ? [] : Object.keys(this.rooms[target]?.activities ?? {});
+            this._setArea(area, { target, activities: new Set(acts) });
+          }}>
+            ${targets.map((o) => html`<option value=${o.value} ?selected=${o.value === pick.target}>${o.label}</option>`)}
+          </select>
+          <label class="check">
+            <input type="checkbox" .checked=${all} @change=${() =>
+              this._setArea(area, { devices: all ? new Set() : new Set(items.map((i) => i.key)) })} />
+            ${this._t("detect_select_all")}
+          </label>
+        </div>
+        ${room
+          ? html`<div class="ltek-row">
+              <label class="lbl">${this._t("detect_activities")}</label>
+              ${activities.length
+                ? activities.map(([id, a]) => html`<label class="check">
+                    <input type="checkbox" .checked=${pick.activities.has(id)} @change=${() => {
+                      const next = new Set(pick.activities);
+                      if (next.has(id)) next.delete(id);
+                      else next.add(id);
+                      this._setArea(area, { activities: next });
+                    }} />${a.name ?? id}</label>`)
+                : html`<span class="ltek-hint">${this._t("detect_no_activities")}</span>`}
+            </div>`
+          : nothing}
+        <div class="ltek-list">${items.map((item) => this._renderDevice(area, item))}</div>
+      </div>
+    </details>`;
+  }
+
+  private _renderDevice(area: string, item: NewItem): TemplateResult {
+    const on = this._areas.get(area)!.devices.has(item.key);
+    return html`<label class="ltek-item ${on ? "open" : ""}">
+      <input type="checkbox" .checked=${on} @change=${() => this._toggleDevice(area, item.key)} />
       <ha-icon class="lead" icon="mdi:television"></ha-icon>
       <span class="ltek-item-text">
         <span class="ltek-name">${item.name}</span>
-        <span class="ltek-subline">${item.entity_id} · ${integrations} · ${item.profile_name}${item.picture ? ` · ${this._t("detect_picture")}` : ""}</span>
-        ${pick.on
-          ? html`<span class="ltek-row">
-                <label class="lbl">${this._t("detect_room")}</label>
-                <select @change=${(e: Event) => {
-                  const target = (e.target as HTMLSelectElement).value;
-                  const acts = target.startsWith("new:") ? [] : Object.keys(this.rooms[target]?.activities ?? {});
-                  this._setPick(item.key, { target, activities: new Set(acts) });
-                }}>
-                  ${targets.map((o) => html`<option value=${o.value} ?selected=${o.value === pick.target}>${o.label}</option>`)}
-                </select>
-              </span>
-              ${room
-                ? activities.length
-                  ? html`<span class="ltek-row"><label class="lbl">${this._t("detect_activities")}</label>
-                      ${activities.map(([id, a]) => html`<label class="check">
-                        <input type="checkbox" .checked=${pick.activities.has(id)} @change=${() => {
-                          const next = new Set(pick.activities);
-                          if (next.has(id)) next.delete(id);
-                          else next.add(id);
-                          this._setPick(item.key, { activities: next });
-                        }} />${a.name ?? id}</label>`)}</span>`
-                  : html`<span class="ltek-subline">${this._t("detect_no_activities")}</span>`
-                : nothing}`
-          : nothing}
+        <span class="ltek-subline">${item.entity_id}</span>
+        <span class="chips">
+          <button
+            class="chip profile"
+            title=${this._t("detect_open_profile")}
+            @click=${(e: Event) => {
+              e.preventDefault();
+              this.dispatchEvent(new CustomEvent("open-profile", { detail: { id: item.profile } }));
+            }}
+          >
+            <ha-icon icon="mdi:package-variant-closed"></ha-icon>${item.profile_name}
+          </button>
+          ${item.integrations.map(
+            (i) => html`<span class="chip ${i === item.integration ? "used" : ""}" title=${i === item.integration ? this._t("detect_used_integration") : ""}>${i}</span>`,
+          )}
+          ${item.picture ? html`<span class="chip picture">${this._t("detect_picture")}</span>` : nothing}
+        </span>
       </span>
-      <span class="ltek-badge">${this._t(`order.${item.order}`)}</span>
-    </div>`;
+      <span class="chip order ${item.order}">${this._t(`order.${item.order}`)}</span>
+    </label>`;
   }
 
   static styles = [
@@ -306,8 +363,74 @@ export class EasyAvControlDetect extends LitElement {
       label.ltek-item {
         cursor: pointer;
       }
-      .ltek-item.new {
+      .ltek-item {
         align-items: flex-start;
+      }
+      details.area {
+        margin-bottom: var(--ltek-sp-2);
+      }
+      details.area .count {
+        margin-left: var(--ltek-sp-2);
+        color: var(--ltek-c-muted);
+        font-weight: var(--ltek-fw-normal);
+        text-transform: none;
+        letter-spacing: 0;
+      }
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--ltek-sp-1);
+        margin-top: var(--ltek-sp-1);
+      }
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 8px;
+        border-radius: 10px;
+        border: 1px solid var(--ltek-c-border);
+        background: var(--ltek-c-surface-raised);
+        color: var(--ltek-c-label);
+        font: inherit;
+        font-size: var(--ltek-fs-small);
+        line-height: 1.4;
+        white-space: nowrap;
+        --mdc-icon-size: 14px;
+      }
+      .chip.used {
+        border-color: var(--ltek-c-accent);
+        color: var(--ltek-c-accent);
+        background: var(--ltek-c-accent-fade);
+      }
+      button.chip.profile {
+        cursor: pointer;
+        border-color: var(--ltek-c-accent-lib);
+        color: var(--ltek-c-accent-lib);
+        background: color-mix(in srgb, var(--ltek-c-accent-lib) 12%, transparent);
+      }
+      button.chip.profile:hover {
+        background: color-mix(in srgb, var(--ltek-c-accent-lib) 24%, transparent);
+      }
+      .chip.picture {
+        border-color: var(--ltek-c-info);
+        color: var(--ltek-c-info);
+      }
+      /* Power-on order: a colour each, so they read at a glance */
+      .chip.order {
+        flex: none;
+        font-weight: var(--ltek-fw-semibold);
+        color: var(--ltek-c-on-accent);
+        border: none;
+      }
+      .chip.order.early {
+        background: var(--ltek-c-warning);
+        color: #212121;
+      }
+      .chip.order.middle {
+        background: var(--ltek-c-info);
+      }
+      .chip.order.late {
+        background: var(--ltek-c-success);
       }
       .ltek-item input[type="checkbox"],
       label.check input {

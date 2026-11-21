@@ -174,6 +174,7 @@ async def _async_register_frontend(hass: HomeAssistant) -> None:
     from homeassistant.components.frontend import add_extra_js_url
 
     version = (await async_get_integration(hass, DOMAIN)).version
+    hass.data[f"{DOMAIN}_version"] = version
 
     def url(name: str) -> str:
         return f"{FRONTEND_URL_BASE}/{name}?v={version}-{mtimes[name]}"

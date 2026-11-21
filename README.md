@@ -368,7 +368,7 @@ result as unsaved changes, and nothing is stored until **Save**.
 
 | Section | What it offers |
 |---|---|
-| New devices | AV devices no room uses yet, for the room of their Home Assistant area (or a new room), with the best integration for each job (a TV with PiPup, ADB and Android TV Remote is one device: PiPup for its state, ADB for the arrow keys), its outlet, and the activities to add it to, at the place its profile gives in the power-on order. A device with a picture check (Lumagen) gets a **Wait for a picture** step. New rooms can get **starter activities**, one per source |
+| Detected devices | AV devices no room uses yet, grouped by their Home Assistant area, for that area's room (or a new room); nothing is ticked until you tick it, with the best integration for each job (a TV with PiPup, ADB and Android TV Remote is one device: PiPup for its state, ADB for the arrow keys), its outlet, and the activities to add it to, at the place its profile gives in the power-on order. A device with a picture check (Lumagen) gets a **Wait for a picture** step. **Create a new Activity per Room using the selected Devices** gives each room without activities one, named after the room |
 | Better integrations | A device a room uses that another integration now covers better. Not ticked |
 | Missing entities | Entities a room uses that no longer exist. When the same device is still covered by another integration, it's offered as the replacement |
 | Renamed entities | The same entity under a new ID: replaced everywhere except in actions and commands |

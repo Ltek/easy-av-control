@@ -1,5 +1,20 @@
 # Changelog
 
+## v2026.11.21.8
+
+**Changed**
+- **Detect integrations:** "New devices" is now **Detected devices**, grouped by Home Assistant area, each area
+  with its room, the activities to add to and **Select all**. Nothing is ticked until you tick it (renamed
+  entities stay ticked: it's the same entity). Each device shows a chip that opens its profile, a chip per
+  integration (the one used for its state in blue) and a coloured power-on order chip (early, middle, late).
+  **Apply**, **Detect again** and the new-activity option are at the top.
+- **Create a new Activity per Room using the selected Devices** (replaces one activity per source): each room
+  that gets detected devices and has no activities gets one, named after the room, with those devices in
+  their power-on order.
+- **One panel open at a time** on the room, device and activity pages.
+- **Star on GitHub, Report an issue and the version** are at the bottom of the panel's menu, and nowhere
+  else in the panel.
+
 ## v2026.11.20.7
 
 **Added**

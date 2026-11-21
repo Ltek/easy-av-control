@@ -392,22 +392,18 @@ def _with_picture(steps: list[dict[str, Any]], key: str) -> list[dict[str, Any]]
     return [*steps, {CONF_TYPE: STEP_TYPE_WAIT_PICTURE, CONF_DEVICE: key}]
 
 
-def starter_activities(hass: HomeAssistant, profiles: dict[str, Profile], room: dict[str, Any], pictures: set[str]) -> dict[str, Any]:
-    """One activity per source (a device late in the power-on order) with the room's displays and audio;
-    a room without a source gets one activity with every device."""
+def starter_activity(
+    hass: HomeAssistant, profiles: dict[str, Profile], room: dict[str, Any], members: list[str], pictures: set[str]
+) -> dict[str, Any]:
+    """One activity, named after the room, with the given devices in their power-on order (projectors and
+    processors early, audio in the middle, sources last) and a picture check for each device that has one."""
     devices = room[CONF_DEVICES]
-    keys = sorted(devices, key=lambda k: (rank(hass, profiles, devices[k]), k))
-    sources = [k for k in keys if rank(hass, profiles, devices[k]) == RANK[ORDER_LATE]]
-    others = [k for k in keys if k not in sources]
-    plans = [(devices[s].get(CONF_NAME) or s, [*others, s]) for s in sources] or [("On", keys)]
-    activities: dict[str, Any] = {}
-    for order, (name, members) in enumerate(plans, 1):
-        steps: list[dict[str, Any]] = []
-        for member in members:
-            if member in pictures:
-                steps = _with_picture(steps, member)
-        activities[_unique(name, set(activities))] = {CONF_NAME: name, "order": order, CONF_DEVICES: members, CONF_STEPS: steps}
-    return activities
+    ordered = sorted(members, key=lambda k: (rank(hass, profiles, devices[k]), k))
+    steps: list[dict[str, Any]] = []
+    for member in ordered:
+        if member in pictures:
+            steps = _with_picture(steps, member)
+    return {CONF_NAME: room.get(CONF_NAME) or "On", "order": 1, CONF_DEVICES: ordered, CONF_STEPS: steps}
 
 
 def apply_detect(
@@ -425,6 +421,7 @@ def apply_detect(
 
     created: set[str] = set()
     pictures: dict[str, set[str]] = {}
+    added: dict[str, list[str]] = {}
     for item in choices.get("new") or []:
         room_id = item.get("room")
         if not room_id or room_id not in rooms:
@@ -442,6 +439,7 @@ def apply_detect(
         room.setdefault(CONF_ACTIVITIES, {})
         key = _unique(item["device"].get(CONF_NAME) or item["entity_id"].split(".", 1)[-1], set(room[CONF_DEVICES]))
         room[CONF_DEVICES][key] = dict(item["device"])
+        added.setdefault(room_id, []).append(key)
         if item.get("picture"):
             pictures.setdefault(room_id, set()).add(key)
         for activity_id in item.get("activities") or []:
@@ -452,11 +450,13 @@ def apply_detect(
             if item.get("picture"):
                 activity[CONF_STEPS] = _with_picture(list(activity.get(CONF_STEPS) or []), key)
 
+    # One new activity per room that has none yet, with the devices selected for it
     if choices.get("starter"):
-        for room_id in created:
+        for room_id, keys in added.items():
             room = rooms[room_id]
-            if not room[CONF_ACTIVITIES] and room[CONF_DEVICES]:
-                room[CONF_ACTIVITIES] = starter_activities(hass, profiles, room, pictures.get(room_id, set()))
+            if not room[CONF_ACTIVITIES]:
+                activity = starter_activity(hass, profiles, room, keys, pictures.get(room_id, set()))
+                room[CONF_ACTIVITIES] = {_unique(activity[CONF_NAME], set()): activity}
     return rooms
 
 

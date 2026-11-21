@@ -62,6 +62,8 @@ export class EasyAvControlPanel extends LitElement {
     _profiles: { state: true },
     _page: { state: true },
     _draftFor: { state: true },
+    _focusProfile: { state: true },
+    _version: { state: true },
   };
 
   declare hass: HomeAssistant;
@@ -81,6 +83,9 @@ export class EasyAvControlPanel extends LitElement {
   declare _page: "room" | "profiles" | "detect";
   /** An integration to start a + Profile draft for (from Detect integrations) */
   declare _draftFor?: string;
+  /** A profile to show on the Profiles page (from a Detected Devices chip) */
+  declare _focusProfile?: string;
+  declare _version?: string;
 
   private _entryId?: string;
   private _revision?: string;
@@ -117,6 +122,7 @@ export class EasyAvControlPanel extends LitElement {
         type: "easy_av_control/config/get",
       });
       this._entryId = result.entry_id;
+      this._version = (result as { version?: string }).version;
       this._revision = result.revision;
       this._original = JSON.stringify(result.rooms);
       this._rooms = result.rooms;
@@ -332,6 +338,11 @@ export class EasyAvControlPanel extends LitElement {
         <button class="room ${this._page === "profiles" ? "active" : ""}" @click=${() => (this._page = "profiles")}>
           <ha-icon icon="mdi:package-variant-closed"></ha-icon> ${this._t("profiles")}
         </button>
+        <div class="nav-foot">
+          <a class="ltek-star" href=${REPO} target="_blank" rel="noopener">${this._t("star")}</a>
+          <a class="ltek-issue" href="${REPO}/issues" target="_blank" rel="noopener">${this._t("report")}</a>
+          ${this._version ? html`<div class="ltek-foot">${this._t("footer_version", { version: this._version })}</div>` : nothing}
+        </div>
       </nav>
       <main>
         <easy-av-control-guide .language=${this.hass.language}></easy-av-control-guide>
@@ -348,6 +359,10 @@ export class EasyAvControlPanel extends LitElement {
                 this._page = "room";
                 this._banner = { kind: "applied" };
               }}
+              @open-profile=${(ev: CustomEvent<{ id: string }>) => {
+                this._focusProfile = ev.detail.id;
+                this._page = "profiles";
+              }}
               @create-profile=${(ev: CustomEvent<{ integration: string }>) => {
                 this._draftFor = ev.detail.integration;
                 this._page = "profiles";
@@ -358,6 +373,8 @@ export class EasyAvControlPanel extends LitElement {
               .hass=${this.hass}
               .profiles=${this._profiles}
               .draftFor=${this._draftFor}
+              .focusProfile=${this._focusProfile}
+              @focus-shown=${() => (this._focusProfile = undefined)}
               @draft-opened=${() => (this._draftFor = undefined)}
               @profiles-changed=${() => this._loadProfiles()}
             ></easy-av-control-profiles>`
@@ -374,10 +391,6 @@ export class EasyAvControlPanel extends LitElement {
                 @delete-room=${() => this._deleteRoom(selected)}
               ></easy-av-control-room-editor>`
           : html`<div class="empty">${this._t("no_rooms")}</div>`}
-        <div class="ltek-links">
-          <a class="ltek-star" href=${REPO} target="_blank" rel="noopener">${this._t("star")}</a>
-          <a class="ltek-issue" href="${REPO}/issues" target="_blank" rel="noopener">${this._t("report")}</a>
-        </div>
       </main>
     </div>`;
   }
@@ -602,6 +615,21 @@ export class EasyAvControlPanel extends LitElement {
       font-weight: var(--ltek-fw-semibold);
       text-transform: uppercase;
       letter-spacing: 0.04em;
+    }
+    .nav-foot {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: var(--ltek-sp-3);
+      margin-top: var(--ltek-sp-6);
+      padding-top: var(--ltek-sp-5);
+      border-top: 1px solid var(--divider-color);
+    }
+    .layout.narrow .nav-foot {
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-items: center;
+      width: 100%;
     }
     .nav-title.library {
       margin-top: var(--ltek-sp-6);

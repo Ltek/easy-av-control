@@ -6,6 +6,7 @@
  * "room-changed" events and saved by the panel.
  */
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
+import { live } from "lit/directives/live.js";
 
 import type { HomeAssistant } from "../types";
 import {
@@ -121,8 +122,10 @@ export class EasyAvControlRoomEditor extends LitElement {
   private _detectAsked = new Set<string>();
   /** All profiles (profiles/list), for the profile picker; given by the panel */
   declare profiles: ProfileView[];
-  /** Panels the user closed (or opened, for the ones that start closed), so a redraw keeps them */
-  private _toggled = new Set<string>();
+  /** One panel open at a time (design guide): per page, the open one ("" = none); absent = the first one */
+  private _openPanel = new Map<string, string>();
+  /** While a page renders: the first panel that may start open */
+  private _firstPanel?: string;
 
   constructor() {
     super();
@@ -190,6 +193,7 @@ export class EasyAvControlRoomEditor extends LitElement {
   // ------------------------------------------------------------------
 
   protected render(): TemplateResult {
+    this._firstPanel = undefined;
     const view = this._view;
     if (view.kind === "device" && this.room.devices?.[view.id]) {
       return this._renderDevice(view.id, this.room.devices[view.id]);
@@ -278,19 +282,34 @@ export class EasyAvControlRoomEditor extends LitElement {
     body: TemplateResult,
     startOpen = true,
   ): TemplateResult {
-    const open = this._toggled.has(key) ? !startOpen : startOpen;
+    const page = this._pageKey();
+    if (startOpen && this._firstPanel === undefined) this._firstPanel = key;
+    const current = this._openPanel.get(page) ?? this._firstPanel;
+    const open = current === key;
     return html`<details
       class="ltek-sec"
-      ?open=${open}
+      .open=${live(open)}
       @toggle=${(ev: Event) => {
         const now = (ev.target as HTMLDetailsElement).open;
-        if (now === startOpen) this._toggled.delete(key);
-        else this._toggled.add(key);
+        const shown = this._openPanel.get(page) ?? this._firstPanel;
+        if (now && shown !== key) {
+          this._openPanel.set(page, key);
+          this.requestUpdate();
+        } else if (!now && shown === key) {
+          this._openPanel.set(page, "");
+          this.requestUpdate();
+        }
       }}
     >
       <summary><ha-icon icon=${icon}></ha-icon>${title}<ha-icon class="chev" icon="mdi:chevron-down"></ha-icon></summary>
       <div class="ltek-body">${hint ? html`<p class="ltek-hint">${hint}</p>` : nothing}${body}</div>
     </details>`;
+  }
+
+  /** The page a panel belongs to: the room's own settings, or one device or activity. */
+  private _pageKey(): string {
+    const view = this._view;
+    return view.kind === "list" ? `list:${this.roomId}` : `${view.kind}:${this.roomId}:${view.id}`;
   }
 
   /** A titled panel with a short explanation. */

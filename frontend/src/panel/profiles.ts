@@ -11,7 +11,7 @@ import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 import type { HomeAssistant } from "../types";
 import { learnGroups, profileSummary, type ProfileView } from "./device-state";
 import type { Obj } from "./model";
-import { REPO, ltekChrome, ltekTokens } from "./ltek-styles";
+import { ltekChrome, ltekTokens } from "./ltek-styles";
 import { t } from "./strings";
 
 type Learn = { watch: string; device: string; on: string[]; off: string[]; mode: "on" | "off" | null };
@@ -28,6 +28,7 @@ export class EasyAvControlProfiles extends LitElement {
     _notice: { state: true },
     _pick: { state: true },
     draftFor: { attribute: false },
+    focusProfile: { attribute: false },
   };
 
   declare hass: HomeAssistant;
@@ -40,6 +41,8 @@ export class EasyAvControlProfiles extends LitElement {
   declare _pick?: string[];
   /** Open a + Profile draft for this integration (set by the panel from Detect integrations) */
   declare draftFor?: string;
+  /** Show this profile's summary and scroll to it (set by the panel from a Detected Devices chip) */
+  declare focusProfile?: string;
 
   constructor() {
     super();
@@ -55,6 +58,15 @@ export class EasyAvControlProfiles extends LitElement {
   }
 
   protected updated(changed: Map<string, unknown>): void {
+    if (changed.has("focusProfile") && this.focusProfile) {
+      const id = this.focusProfile;
+      this._editing = undefined;
+      this._preview = id;
+      this.dispatchEvent(new CustomEvent("focus-shown"));
+      void this.updateComplete.then(() =>
+        this.shadowRoot?.querySelector(`[data-profile="${CSS.escape(id)}"]`)?.scrollIntoView({ block: "center" }),
+      );
+    }
     if (changed.has("draftFor") && this.draftFor) {
       const integration = this.draftFor;
       this.dispatchEvent(new CustomEvent("draft-opened"));
@@ -192,7 +204,6 @@ export class EasyAvControlProfiles extends LitElement {
         </summary>
         <div class="ltek-body">
           <p class="ltek-hint">${this._t("profile_share_hint")}</p>
-          <a class="ltek-issue" href="${REPO}/issues" target="_blank" rel="noopener">${this._t("report")}</a>
         </div>
       </details>
       ${this._renderDialog()}
@@ -207,7 +218,7 @@ export class EasyAvControlProfiles extends LitElement {
       : p.used_by?.length
         ? this._t("profile_used_by", { where: p.used_by.join(", ") })
         : this._t("profile_unused");
-    return html`<div class="ltek-item ${open ? "open" : ""}">
+    return html`<div class="ltek-item ${open ? "open" : ""}" data-profile=${p.id}>
         <ha-icon class="lead" icon=${builtin ? "mdi:lock-outline" : "mdi:account-cog-outline"}></ha-icon>
         <span class="ltek-item-text">
           <span class="ltek-name">${p.name}</span>
