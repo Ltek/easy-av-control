@@ -128,6 +128,8 @@ The concepts carry over almost one to one:
 | Help button for devices out of sync | Not needed: devices report their real state through their Home Assistant integrations, and a device that is already on is not toggled |
 | Harmony remote | The card in the browser and the Home Assistant app, wall buttons through `toggle_activity` and `send_command` |
 
+To start the activity from the Harmony remote, add **Started by** in its Flow and pick the same select: its activity starts the activity, `power_off` shuts it down. A Harmony activity that only switches the devices you control with the remote (the streamer) keeps Harmony's infrared power commands out of the way of Easy AV Control's order.
+
 A Harmony Hub itself can be a device: add its **Activities** select (`select.harmony_hub_activities`, found by Detect integrations). Startup selects its activity, so the Harmony remote works with the devices in it; Shutdown selects `power_off`, which also turns off the devices in that Harmony activity.
 
 Devices that only understand infrared keep working through any Home Assistant integration that sends IR codes, such as a Harmony Hub or a Broadlink: an own command calls `remote.send_command` on it (see [Own commands and buttons](#own-commands-and-buttons)):
@@ -408,6 +410,7 @@ hook) follows the room's sensor instead of waiting minutes for the select. The `
 | `order` | Position in lists; without it, activities are sorted by name. Home Assistant stores the configuration with sorted keys, so the order in which you write activities is not kept |
 | `devices` | Devices the activity uses, in power-on order |
 | `before` | Per device, what to wait for before it is turned on, see below |
+| `started_by` | Entities whose state starts the activity, and optionally shuts it down: `[{entity_id: select.harmony_hub_activities, state: "On", stop_state: power_off}]`. For a Harmony remote's activity button, a wall switch, an `input_boolean` other automations set. Changes from or to `unavailable` are ignored, and so is a change that matches what the room does already (the hub switching to its activity because this activity's startup selected it) |
 | `checks` | What must be right once the devices are on (a picture on the projector) |
 | `steps` | Settings applied once the devices are up |
 | `on_start` | Home Assistant actions, run alongside the start |

@@ -133,8 +133,10 @@ from .const import (
     CONF_ROOMS,
     CONF_SOUND_MODE,
     CONF_SOURCE,
+    CONF_STARTED_BY,
     CONF_STATE,
     CONF_STEPS,
+    CONF_STOP_STATE,
     CONF_TARGET,
     CONF_TILT_POSITION,
     CONF_TIMEOUT,
@@ -412,6 +414,9 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # attribute (source_list, sound_mode_list) -> media player -> its last known list
         self._lists: dict[str, dict[str, list[str]]] = {a: {} for a in _REMEMBERED_LISTS}
         self._unsub_sources: CALLBACK_TYPE | None = None
+        self._unsub_started_by: CALLBACK_TYPE | None = None
+        # Room -> the Started by change that sent its next command, for its run's trace
+        self._triggered: dict[str, dict[str, str]] = {}
         # Integration profiles (device_profiles.py), loaded at setup
         self.profiles: dict[str, Profile] = {}
         # Measured times (device_timings.py): device entity -> {"on": [s, ...], "off": [s, ...]}
@@ -536,6 +541,7 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._restored = True
             await self._async_restore()
         self._track_sources()
+        self._track_started_by()
 
         return config
 
@@ -674,6 +680,9 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self._unsub_sources is not None:
             self._unsub_sources()
             self._unsub_sources = None
+        if self._unsub_started_by is not None:
+            self._unsub_started_by()
+            self._unsub_started_by = None
         for rt in self._runtime.values():
             for task in [rt.task, *rt.pending_cuts.values()]:
                 if task and not task.done():
@@ -730,6 +739,60 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._unsub_sources = async_track_state_change_event(
                 self.hass, players, self._source_state_changed
             )
+
+    def _started_by(self) -> list[tuple[str, str, dict[str, Any]]]:
+        """Every activity's Started by entries: (room, activity, entry)."""
+        return [
+            (room_id, activity_id, trigger)
+            for room_id, room in self.rooms.items()
+            for activity_id, activity in room[CONF_ACTIVITIES].items()
+            for trigger in activity.get(CONF_STARTED_BY) or []
+        ]
+
+    def _track_started_by(self) -> None:
+        """Follow the entities that start or stop an activity (Started by)."""
+        if self._unsub_started_by is not None:
+            self._unsub_started_by()
+            self._unsub_started_by = None
+        entities = sorted({trigger[CONF_ENTITY_ID] for _, _, trigger in self._started_by()})
+        if entities:
+            self._unsub_started_by = async_track_state_change_event(self.hass, entities, self._started_by_changed)
+
+    @callback
+    def _started_by_changed(self, event: Event[EventStateChangedData]) -> None:
+        """An entity of Started by changed: start its activity, or stop it.
+
+        Ignored: changes from or to unavailable / unknown (a reconnect), attribute changes, and changes that
+        match what the room does already, such as the Harmony hub switching to its activity because this
+        activity's startup selected it.
+        """
+        old, new = event.data["old_state"], event.data["new_state"]
+        if old is None or new is None or old.state == new.state:
+            return
+        if STATE_UNAVAILABLE in (old.state, new.state) or STATE_UNKNOWN in (old.state, new.state):
+            return
+        entity_id = event.data["entity_id"]
+        for room_id, activity_id, trigger in self._started_by():
+            if trigger[CONF_ENTITY_ID] != entity_id:
+                continue
+            rt = self.runtime(room_id)
+            running = rt.activity == activity_id and rt.state in (
+                ACTIVITY_STATE_STARTING, ACTIVITY_STATE_ACTIVE
+            )
+            if new.state in trigger[CONF_STATE] and not running:
+                _LOGGER.info("Room '%s': %s is %s, starting '%s'", room_id, entity_id, new.state, activity_id)
+                self._triggered[room_id] = {"entity_id": entity_id, "state": new.state}
+                self.hass.async_create_task(self.async_start_activity(room_id, activity_id))
+                return
+            if (
+                new.state in (trigger.get(CONF_STOP_STATE) or [])
+                and rt.activity == activity_id
+                and rt.state in (ACTIVITY_STATE_STARTING, ACTIVITY_STATE_ACTIVE, ACTIVITY_STATE_ERROR)
+            ):
+                _LOGGER.info("Room '%s': %s is %s, shutting down '%s'", room_id, entity_id, new.state, activity_id)
+                self._triggered[room_id] = {"entity_id": entity_id, "state": new.state}
+                self.hass.async_create_task(self.async_stop_activity(room_id))
+                return
 
     @callback
     def _source_state_changed(self, event: Event[EventStateChangedData]) -> None:
@@ -1057,6 +1120,9 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         total = len(new_devices) + len(checks) + len(steps)
         rt.progress = (0, total)
         rt.run = run = self._recorder(room_id, activity_id, "start", previous)
+        if by := self._triggered.pop(room_id, None):
+            run.run["by"] = by
+            run.event("started_by", **by)
         ir.async_delete_issue(self.hass, DOMAIN, self._aborted_issue_id(room_id))
         self._changed()
 
@@ -1700,6 +1766,9 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         rt.state = ACTIVITY_STATE_STOPPING
         rt.run = run = self._recorder(room_id, activity_id, "stop", None)
+        if by := self._triggered.pop(room_id, None):
+            run.run["by"] = by
+            run.event("started_by", **by)
         self._changed()
 
         if activity is not None:

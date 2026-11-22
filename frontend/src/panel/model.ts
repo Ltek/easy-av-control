@@ -50,6 +50,8 @@ export interface Activity extends Obj {
   steps?: Step[];
   checks?: Obj[];
   before?: Record<string, Before>;
+  /** Entities whose state starts the activity (a Harmony hub's activity), and optionally shuts it down */
+  started_by?: { entity_id: string; state: string | string[]; stop_state?: string | string[] }[];
   on_start?: unknown[];
   on_stop?: unknown[];
   remote?: Obj;

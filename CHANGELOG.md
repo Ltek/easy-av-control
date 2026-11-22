@@ -1,5 +1,15 @@
 # Changelog
 
+## v2026.11.22.20
+
+**Added**
+- **Started by**, per activity, in its Flow: entities whose state starts the activity, and optionally shuts it
+  down. A Harmony hub's Activities select fills in its activity and `power_off` by itself, so the Harmony remote's
+  activity button starts the activity and its off button shuts it down. Works for a wall switch or an
+  `input_boolean` too. Changes from or to unavailable (a reconnect) are ignored, and so are changes that match
+  what the room does already, such as the hub switching to its activity because this activity's startup selected
+  it. The run's trace and Reports export say what started it.
+
 ## v2026.11.22.19
 
 **Changed**

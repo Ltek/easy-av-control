@@ -102,9 +102,11 @@ from .const import (
     CONF_SETTINGS,
     CONF_SOUND_MODE,
     CONF_SOURCE,
+    CONF_STARTED_BY,
     CONF_STATE,
     CONF_STATE_SOURCE,
     CONF_STEPS,
+    CONF_STOP_STATE,
     CONF_TARGET,
     CONF_TILT_POSITION,
     CONF_TIMEOUT,
@@ -449,6 +451,14 @@ BEFORE_SCHEMA = vol.Schema(
     }
 )
 
+STARTED_BY_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_ENTITY_ID): cv.entity_id,
+        vol.Required(CONF_STATE): _STATES,
+        vol.Optional(CONF_STOP_STATE): _STATES,
+    }
+)
+
 _ACTIVITY_FIELDS = vol.Schema(
     {
         vol.Optional(CONF_NAME): str,
@@ -459,6 +469,7 @@ _ACTIVITY_FIELDS = vol.Schema(
         vol.Optional(CONF_STEPS, default=list): [_step],
         # Device -> what to wait for before it is turned on
         vol.Optional(CONF_BEFORE, default=dict): {_KEY: BEFORE_SCHEMA},
+        vol.Optional(CONF_STARTED_BY, default=list): [STARTED_BY_SCHEMA],
         # Validated in depth by async_validate_config (needs hass)
         vol.Optional(CONF_ON_START, default=list): vol.Any(None, [dict]),
         vol.Optional(CONF_ON_STOP, default=list): vol.Any(None, [dict]),
@@ -698,6 +709,10 @@ def iter_entity_references(data: dict[str, Any]):
                         f"activities.{activity_id}.checks[{idx}].entity_id",
                         check[CONF_ENTITY_ID],
                     )
+            for idx, trigger in enumerate(activity.get(CONF_STARTED_BY) or []):
+                yield EntityReference(
+                    room_id, f"activities.{activity_id}.started_by[{idx}].entity_id", trigger[CONF_ENTITY_ID]
+                )
             for idx, step in enumerate(activity.get(CONF_STEPS) or []):
                 if step.get(CONF_ENTITY_ID):
                     yield EntityReference(

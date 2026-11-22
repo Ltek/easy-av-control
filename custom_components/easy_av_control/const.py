@@ -100,6 +100,9 @@ CONF_WAIT_FOR: Final = "wait_for"
 WAIT_FOR_ON: Final = "on"
 WAIT_FOR_PICTURE: Final = "picture"
 DEFAULT_BEFORE_TIMEOUT: Final = 90
+# Per activity: entities whose state starts it (a Harmony hub switching to its activity, a wall switch), and stops it
+CONF_STARTED_BY: Final = "started_by"
+CONF_STOP_STATE: Final = "stop_state"
 FAILURE_WARN: Final = "warn"
 FAILURE_STOP: Final = "stop"
 FAILURE_RETRY: Final = "retry"

@@ -126,3 +126,66 @@ async def test_no_wait_moves_on_at_once(hass: HomeAssistant, devices: Devices) -
     coordinator = await setup(hass, devices, data)
     await coordinator.async_start_activity("wz", "musik")
     assert 10 not in devices.sleeps
+
+
+def _started_by() -> dict[str, Any]:
+    data = _theater()
+    data["rooms"]["wz"]["activities"]["tv"]["started_by"] = [
+        {"entity_id": HARMONY, "state": "On", "stop_state": "power_off"}
+    ]
+    return data
+
+
+async def test_harmony_on_starts_the_activity_and_power_off_stops_it(hass: HomeAssistant, devices: Devices) -> None:
+    hass.states.async_set(HARMONY, "power_off", {"options": ["power_off", "On"]})
+    hass.states.async_set(SEATS, "off")
+    coordinator = await setup(hass, devices, _started_by())
+
+    hass.states.async_set(HARMONY, "On", {"options": ["power_off", "On"]})
+    await _drain(hass)
+    assert coordinator.activity_states["wz"] == "active"
+    assert coordinator.active_activities["wz"] == "tv"
+    # The hub is on already: it is not selected again, and the startup ran once
+    assert not [c for c in devices.calls if c[0] == "select.select_option"]
+    assert devices.names().count(("homeassistant.turn_on", (ONKYO,))) == 1
+
+    hass.states.async_set(HARMONY, "power_off", {"options": ["power_off", "On"]})
+    await _drain(hass)
+    assert coordinator.activity_states["wz"] == "idle"
+
+
+async def test_started_by_ignores_a_reconnect(hass: HomeAssistant, devices: Devices) -> None:
+    hass.states.async_set(HARMONY, "unavailable")
+    coordinator = await setup(hass, devices, _started_by())
+    hass.states.async_set(HARMONY, "On", {"options": ["power_off", "On"]})
+    await _drain(hass)
+    assert coordinator.activity_states["wz"] == "idle"
+
+
+def test_started_by_is_in_the_flow(hass: HomeAssistant) -> None:
+    room = validate_config(copy.deepcopy(_started_by()))["rooms"]["wz"]
+    start = plan_start(hass, "wz", room, "tv")["rows"][0]
+    stop = plan_stop(hass, "wz", room, "tv")["rows"][0]
+    assert (start["kind"], start["states"]) == ("started_by", ["On"])
+    assert (stop["kind"], stop["states"]) == ("started_by", ["power_off"])
+
+
+async def test_its_own_startup_does_not_start_it_twice(hass: HomeAssistant, devices: Devices) -> None:
+    """The startup selects On on the hub; that change must not start the activity again."""
+    hass.states.async_set(HARMONY, "power_off", {"options": ["power_off", "On"]})
+    hass.states.async_set(SEATS, "off")
+    coordinator = await setup(hass, devices, _started_by())
+    original = devices.engine_call
+
+    async def call(domain, service, data, context, label, target=None):
+        await original(domain, service, data, context, label, target)
+        if service == "select_option":
+            hass.states.async_set(HARMONY, data["option"], {"options": ["power_off", "On"]})
+
+    coordinator._async_call = call  # type: ignore[method-assign]
+    await coordinator.async_start_activity("wz", "tv")
+    await _drain(hass)
+    assert devices.names().count(("homeassistant.turn_on", (ONKYO,))) == 1
+    await coordinator.async_stop_activity("wz")
+    await _drain(hass)
+    assert coordinator.activity_states["wz"] == "idle"

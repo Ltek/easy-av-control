@@ -177,6 +177,10 @@ await page.locator('easy-av-control-room-editor .inline-bar button').first().cli
 await settle(800);
 await page.locator('easy-av-control-flow .adder').scrollIntoViewIfNeeded();
 await shotBoth('activity-flow-add');
+await page.locator('easy-av-control-flow [slot="add-start"] button.ltek-add', { hasText: 'Started by' }).click();
+await settle(1200);
+await page.locator('easy-av-control-flow [slot="add-start"] .inline-add').scrollIntoViewIfNeeded();
+await shotBoth('activity-started-by');
 await page.locator('easy-av-control-room-editor summary', { hasText: 'Remote control preview' }).click();
 await settle(2500);
 await page.locator('easy-av-control-remote-preview').scrollIntoViewIfNeeded();

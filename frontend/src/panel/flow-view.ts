@@ -44,13 +44,14 @@ const ICONS: Record<string, string> = {
   already_on: "mdi:check",
   step: "mdi:tune-variant",
   delay: "mdi:timer-outline",
+  started_by: "mdi:gesture-tap-button",
   wait_for: "mdi:clock-check-outline",
 };
 
 /** A row's identity, for editing it in place. */
 export function rowKey(row: Row, header?: Row): string {
   const device = row.device ?? (header?.kind === "device" ? header.device : undefined) ?? "";
-  return [row.kind, device, row.step ?? "", row.check ?? "", row.hook ?? "", row.reason ?? ""].join("|");
+  return [row.kind, device, row.step ?? row.index ?? "", row.check ?? "", row.hook ?? "", row.reason ?? ""].join("|");
 }
 
 /** What the trash icon on a row removes (handled by the room editor): undefined for rows it can't. */
@@ -65,6 +66,7 @@ function removable(row: Row, header: Row | undefined, mode: string): boolean {
     case "ready":
     case "delay":
     case "wait_for":
+    case "started_by":
     case "check":
     case "step":
     case "hook":
@@ -99,6 +101,7 @@ const ACTIVITY_PANELS: Record<string, string> = {
   hook: "section_advanced",
   hook_wait: "section_advanced",
   already_on: "section_activity_devices",
+  started_by: "started_by",
 };
 
 
@@ -398,6 +401,11 @@ export class EasyAvControlFlow extends LitElement {
         });
       case "delay":
         return this._t("flow.delay", { seconds: this._seconds(row.seconds) });
+      case "started_by":
+        return this._t(this._mode === "stop" ? "flow.stopped_by" : "flow.started_by", {
+          entity: this._entity(row.entity_id),
+          states: ((row.states as string[] | undefined) ?? []).join(" / "),
+        });
       case "wait_for": {
         const waits = (row.waits as { device: string; state: string }[] | undefined) ?? [];
         const what = waits

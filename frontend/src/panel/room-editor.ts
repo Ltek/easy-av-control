@@ -126,6 +126,7 @@ export class EasyAvControlRoomEditor extends LitElement {
     jump: { attribute: false },
     _powerOn: { state: true },
     _flowEditing: { state: true },
+    _draftStartedBy: { state: true },
   };
 
   declare hass: HomeAssistant;
@@ -153,6 +154,8 @@ export class EasyAvControlRoomEditor extends LitElement {
   declare _powerOn: Set<string>;
   /** The Flow row being edited in place: its key (flow-view rowKey) and the panel it stands for */
   declare _flowEditing?: { key: string; device?: string; panel: string };
+  /** A Started by entry being added: kept here until it has an entity and a state, so the room stays valid */
+  declare _draftStartedBy?: { entity_id: string; state: string; stop_state?: string };
   /** The outlet a device had when it was unticked, to bring back when it is ticked again */
   private _powerMemo = new Map<string, Obj>();
   private _holdTimer?: number;
@@ -200,7 +203,10 @@ export class EasyAvControlRoomEditor extends LitElement {
       this._view = { kind: "list" };
       this._notice = undefined;
     }
-    if (changed.has("_view")) this._flowEditing = undefined;
+    if (changed.has("_view")) {
+      this._flowEditing = undefined;
+      this._draftStartedBy = undefined;
+    }
     const jump = this.jump;
     if (changed.has("jump") && jump && !jump.activity) {
       this._view = { kind: "list" };
@@ -1118,6 +1124,8 @@ export class EasyAvControlRoomEditor extends LitElement {
         ${done}`;
     }
     switch (target.panel) {
+      case "started_by":
+        return html`${this._renderStartedBy(id, activity)}${done}`;
       case "section_checks":
         return html`${this._renderChecks(id, activity)}${done}`;
       case "steps":
@@ -1215,6 +1223,76 @@ export class EasyAvControlRoomEditor extends LitElement {
         : nothing}`;
   }
 
+  /** Started by: entities whose state starts the activity, and optionally shuts it down. */
+  private _renderStartedBy(id: string, activity: Activity): TemplateResult {
+    type Entry = NonNullable<Activity["started_by"]>[number];
+    const list = activity.started_by ?? [];
+    const set = (next: Entry[]) => this._setActivity(id, { ...activity, started_by: next.length ? next : undefined });
+    const draft = this._draftStartedBy;
+    const shown: Entry[] = draft ? [...list, draft] : list;
+    const options = (entity: string) =>
+      ((this.hass.states[entity]?.attributes.options as string[] | undefined) ?? []).map((o) => ({ value: o, label: o }));
+    const one = (v: unknown) => (Array.isArray(v) ? String(v[0] ?? "") : String(v ?? ""));
+    return html`<p class="ltek-hint">${this._t("started_by_hint")}</p>
+      <div class="ltek-list">
+        ${draft ? nothing : html`<button class="ltek-add" @click=${() => (this._draftStartedBy = { entity_id: "", state: "" })}>+ ${this._t("flow.add_started_by")}</button>`}
+        ${shown.map((entry, i) => {
+          const isDraft = i >= list.length;
+          const choices = options(entry.entity_id);
+          const pick = choices.length
+            ? { select: { options: choices, mode: "dropdown", custom_value: true } }
+            : { text: {} };
+          return html`<div class="step">
+            <div class="step-head">
+              <span class="title"><span class="num">${i + 1}</span> ${this._t("started_by")}</span>
+              ${isDraft
+                ? html`<button class="ltek-del" title=${this._t("delete")} aria-label=${this._t("delete")} @click=${() => (this._draftStartedBy = undefined)}>
+                    <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+                  </button>`
+                : this._moveButtons(list, i, set)}
+            </div>
+            <ltek-form
+              .hass=${this.hass}
+              .data=${{ started_by_entity: entry.entity_id, started_by_state: one(entry.state), started_by_stop: one(entry.stop_state) }}
+              .schema=${[
+                { name: "started_by_entity", required: true, selector: { entity: {} } },
+                { name: "started_by_state", required: true, selector: pick },
+                { name: "started_by_stop", selector: pick },
+              ]}
+              .computeLabel=${this._label}
+              @value-changed=${(ev: CustomEvent) => {
+                const v = ev.detail.value as Obj;
+                const entity = String(v.started_by_entity ?? "");
+                let state = String(v.started_by_state ?? "");
+                let stop = String(v.started_by_stop ?? "");
+                if (entity !== entry.entity_id) {
+                  // A Harmony hub (any select with power_off): its first activity starts, power_off shuts down
+                  const opts = ((this.hass.states[entity]?.attributes.options as string[] | undefined) ?? []);
+                  if (opts.includes("power_off")) {
+                    state = opts.find((o) => o !== "power_off") ?? "";
+                    stop = "power_off";
+                  }
+                }
+                const entryNext = clean({ entity_id: entity, state, stop_state: stop || undefined }) as Entry;
+                if (isDraft) {
+                  if (entity && state) {
+                    this._draftStartedBy = undefined;
+                    set([...list, entryNext]);
+                  } else {
+                    this._draftStartedBy = { entity_id: entity, state, stop_state: stop || undefined };
+                  }
+                  return;
+                }
+                const next = [...list];
+                next[i] = entryNext;
+                set(next);
+              }}
+            ></ltek-form>
+          </div>`;
+        })}
+      </div>`;
+  }
+
   /** Actions after start, in order, with + to add one (a device step starts with the activity's first device). */
   private _renderSteps(id: string, activity: Activity): TemplateResult {
     return html`${(activity.steps ?? []).map((step, i) => this._renderStep(id, activity, step, i))}
@@ -1289,6 +1367,17 @@ export class EasyAvControlRoomEditor extends LitElement {
                 ${STEP_TYPES.map((type) => html`<option value=${type}>${this._t(`step.${type}`)}</option>`)}
               </select>`
           : nothing}
+        ${mode === "start" && !(activity.started_by ?? []).length
+          ? html`<button
+              class="ltek-add"
+              @click=${() => {
+                this._draftStartedBy = { entity_id: "", state: "" };
+                this._flowEditing = { key: "__started_by", panel: "started_by" };
+              }}
+            >
+              + ${this._t("flow.add_started_by")}
+            </button>`
+          : nothing}
         ${hasHook
           ? nothing
           : html`<button class="ltek-add" @click=${() => (this._flowEditing = adding ? undefined : { key: `__${hook}`, panel: "section_advanced" })}>
@@ -1296,7 +1385,10 @@ export class EasyAvControlRoomEditor extends LitElement {
             </button>`}
       </div>
       ${mode === "start" && !free.length && !chosen.length ? html`<p class="ltek-hint">${this._t("flow.no_more_devices")}</p>` : nothing}
-      ${adding && !hasHook ? html`<div class="inline-add">${this._renderHooks(id, activity, hook)}</div>` : nothing}`;
+      ${adding && !hasHook ? html`<div class="inline-add">${this._renderHooks(id, activity, hook)}</div>` : nothing}
+      ${mode === "start" && this._flowEditing?.key === "__started_by"
+        ? html`<div class="inline-add">${this._renderStartedBy(id, activity)}</div>`
+        : nothing}`;
   }
 
   /** A Flow row's trash icon. Device settings change for every activity that uses the device. */
@@ -1320,6 +1412,17 @@ export class EasyAvControlRoomEditor extends LitElement {
       case "hook":
         this._setActivity(id, { ...activity, [String(row.hook)]: [] });
         return;
+      case "started_by": {
+        const index = Number(row.index) - 1;
+        const entry = activity.started_by?.[index];
+        if (!entry) return;
+        // From the Shutdown view only its shutdown state goes
+        const list = [...(activity.started_by ?? [])];
+        if (detail.mode === "stop") list[index] = clean({ ...entry, stop_state: undefined }) as typeof entry;
+        else list.splice(index, 1);
+        this._setActivity(id, { ...activity, started_by: list.length ? list : undefined });
+        return;
+      }
       case "delay":
       case "wait_for": {
         if (!deviceId) return;

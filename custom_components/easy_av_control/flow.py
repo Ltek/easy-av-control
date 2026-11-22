@@ -39,8 +39,10 @@ from .const import (
     CONF_POWER_SWITCH,
     CONF_READY,
     CONF_RELOAD_INTEGRATION,
+    CONF_STARTED_BY,
     CONF_STATE,
     CONF_STEPS,
+    CONF_STOP_STATE,
     CONF_TIMEOUT,
     CONF_TURN_OFF_AFTER,
     CONF_TYPE,
@@ -166,6 +168,15 @@ def _switch_row(
     return row
 
 
+def _started_by_rows(activity: dict[str, Any], at: list[float], *, stop: bool) -> list[dict[str, Any]]:
+    """What starts the activity besides its own commands (a Harmony hub's activity), or shuts it down."""
+    return [
+        {"kind": "started_by", "at": at, "index": i, "entity_id": t[CONF_ENTITY_ID], "states": t[CONF_STOP_STATE if stop else CONF_STATE]}
+        for i, t in enumerate(activity.get(CONF_STARTED_BY) or [], 1)
+        if t.get(CONF_STOP_STATE if stop else CONF_STATE)
+    ]
+
+
 def _hook(activity: dict[str, Any], key: str, at: list[float]) -> dict[str, Any] | None:
     actions = activity.get(key) or []
     if not actions:
@@ -208,7 +219,10 @@ def plan_start(
     )
     shared = shared_outlets(room_id, room, others or {})
     clock = _Clock()
-    rows: list[dict[str, Any]] = [{"kind": "state", "at": clock.at, "state": "starting"}]
+    rows: list[dict[str, Any]] = [
+        *_started_by_rows(activity, clock.at, stop=False),
+        {"kind": "state", "at": clock.at, "state": "starting"},
+    ]
 
     # Smart switching
     needed = power_switches(devices, new_devices)
@@ -474,7 +488,10 @@ def plan_stop(
     device_ids: list[str] = activity[CONF_DEVICES]
     shared = shared_outlets(room_id, room, others or {})
     clock = _Clock()
-    rows: list[dict[str, Any]] = [{"kind": "state", "at": clock.at, "state": "stopping"}]
+    rows: list[dict[str, Any]] = [
+        *_started_by_rows(activity, clock.at, stop=True),
+        {"kind": "state", "at": clock.at, "state": "stopping"},
+    ]
     if hook := _hook(activity, CONF_ON_STOP, clock.at):
         rows.append(hook)
 
