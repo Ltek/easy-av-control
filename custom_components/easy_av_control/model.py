@@ -79,8 +79,14 @@ from .const import (
     CONF_DEVICES,
     CONF_ENTITY,
     CONF_ENTITY_ID,
+    CONF_GRACE,
     CONF_ICON,
     CONF_ID,
+    CONF_IDLE_AFTER,
+    CONF_IDLE_WARNING,
+    CONF_LOST_AFTER,
+    CONF_MODE,
+    CONF_MONITOR,
     CONF_NAME,
     CONF_OFF_OPTION,
     CONF_ON_FAILURE,
@@ -90,6 +96,7 @@ from .const import (
     CONF_OPTION,
     CONF_OPTIONS,
     CONF_ORDER,
+    CONF_PICTURE_LOST_AFTER,
     CONF_POSITION,
     CONF_POWER_SWITCH,
     CONF_PROFILE,
@@ -120,8 +127,14 @@ from .const import (
     CONF_WAIT_FOR,
     CONF_WAIT_OFF,
     CONF_WAIT_ON,
+    CONF_WATCH,
     DEFAULT_BEFORE_TIMEOUT,
+    DEFAULT_IDLE_WARNING,
+    DEFAULT_LOST_AFTER,
+    DEFAULT_PICTURE_LOST_AFTER,
     DEFAULT_READY_TIMEOUT,
+    DEFAULT_WATCH_GRACE,
+    DEFAULT_WATCH_TURN_OFF_AFTER,
     DOMAIN,
     FAILURE_ACTIONS,
     FAILURE_STOP,
@@ -129,6 +142,7 @@ from .const import (
     ON_TIMEOUT_ABORT,
     ON_TIMEOUT_CONTINUE,
     ON_TIMEOUT_OPTIONS,
+    PROBLEMS,
     SETTING_ENTITY_DOMAINS,
     SETTING_SOUND_MODE,
     SETTING_SOURCE,
@@ -149,6 +163,8 @@ from .const import (
     WAIT_FOR_ON,
     WAIT_FOR_PICTURE,
     WAIT_MODES,
+    WATCH_MODES,
+    WATCH_NOTIFY,
 )
 
 CONF_DELAY_AFTER = "delay_after"
@@ -240,6 +256,14 @@ def _device_setting(value: Any) -> dict[str, Any]:
     return _one_of_setting_or_entity(DEVICE_SETTING_SCHEMA(value))
 
 
+WATCH_SCHEMA = vol.Schema(
+    {
+        vol.Optional(CONF_MODE, default=WATCH_NOTIFY): vol.In(WATCH_MODES),
+        vol.Optional(CONF_GRACE, default=DEFAULT_WATCH_GRACE): _SECONDS,
+        vol.Optional(CONF_TURN_OFF_AFTER, default=DEFAULT_WATCH_TURN_OFF_AFTER): _SECONDS,
+    }
+)
+
 DEVICE_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_ENTITY_ID): cv.entity_id,
@@ -252,6 +276,7 @@ DEVICE_SCHEMA = vol.Schema(
         vol.Optional(CONF_DELAY_AFTER_ON, default=0): _SECONDS,
         vol.Optional(CONF_DELAY_AFTER_OFF, default=0): _SECONDS,
         vol.Optional(CONF_TURN_OFF_AFTER): _SECONDS,
+        vol.Optional(CONF_WATCH, default=dict): WATCH_SCHEMA,
         # A select (Harmony activities): the option for on; for off, power_off
         vol.Optional(CONF_OPTION): str,
         vol.Optional(CONF_OFF_OPTION): str,
@@ -451,6 +476,15 @@ BEFORE_SCHEMA = vol.Schema(
     }
 )
 
+MONITOR_SCHEMA = vol.Schema(
+    {
+        vol.Optional(CONF_LOST_AFTER, default=DEFAULT_LOST_AFTER): _SECONDS,
+        vol.Optional(CONF_PICTURE_LOST_AFTER, default=DEFAULT_PICTURE_LOST_AFTER): _SECONDS,
+        vol.Optional(CONF_IDLE_AFTER, default=0): vol.All(vol.Coerce(float), vol.Range(min=0, max=86400)),
+        vol.Optional(CONF_IDLE_WARNING, default=DEFAULT_IDLE_WARNING): _SECONDS,
+    }
+)
+
 STARTED_BY_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_ENTITY_ID): cv.entity_id,
@@ -470,6 +504,7 @@ _ACTIVITY_FIELDS = vol.Schema(
         # Device -> what to wait for before it is turned on
         vol.Optional(CONF_BEFORE, default=dict): {_KEY: BEFORE_SCHEMA},
         vol.Optional(CONF_STARTED_BY, default=list): [STARTED_BY_SCHEMA],
+        vol.Optional(CONF_MONITOR, default=dict): MONITOR_SCHEMA,
         # Validated in depth by async_validate_config (needs hass)
         vol.Optional(CONF_ON_START, default=list): vol.Any(None, [dict]),
         vol.Optional(CONF_ON_STOP, default=list): vol.Any(None, [dict]),
@@ -670,7 +705,13 @@ def expected_unique_ids(rooms: dict[str, Any]) -> set[str]:
             scene_unique_id(room_id, activity_id)
             for activity_id in (room.get(CONF_ACTIVITIES) or {})
         )
+        ids.update(problem_unique_id(room_id, kind) for kind in PROBLEMS)
     return ids
+
+
+def problem_unique_id(room_id: str, kind: str) -> str:
+    """Unique ID of a room's monitor problem sensor."""
+    return f"{DOMAIN}_problem_{room_id}_{kind}"
 
 
 @dataclass(frozen=True, slots=True)

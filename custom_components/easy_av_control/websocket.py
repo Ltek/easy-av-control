@@ -43,7 +43,7 @@ from .detect import apply_detect, async_get_seen, detect_all, draft_profile
 from .device_profiles import ROLES, best_for_role, physical_devices, resolve
 from .device_state import effective_source, wait_mode
 from .device_timings import timings_of, view as timing_view
-from .flow import plan_start, plan_stop
+from .flow import plan_monitor, plan_start, plan_stop
 from .model import async_validate_config, find_missing_entities
 from .profile_library import async_get_library, profile_for_device
 
@@ -155,7 +155,7 @@ def ws_subscribe(
         vol.Required(ATTR_ROOM): str,
         vol.Optional("entry_id"): str,
         vol.Required(ATTR_ACTIVITY): str,
-        vol.Optional("mode", default="start"): vol.In(["start", "stop"]),
+        vol.Optional("mode", default="start"): vol.In(["start", "stop", "monitor"]),
         vol.Optional("from"): vol.Any(None, str),
     }
 )
@@ -178,7 +178,9 @@ def ws_control_flow(
     others: dict[str, Any] = {}
     for other in _coordinators(hass):
         others.update(other.rooms)
-    if msg["mode"] == "stop":
+    if msg["mode"] == "monitor":
+        flow = plan_monitor(hass, room, activity)
+    elif msg["mode"] == "stop":
         flow = plan_stop(hass, room_id, room, activity, others)
     else:
         flow = plan_start(hass, room_id, room, activity, previous, others)
@@ -423,7 +425,7 @@ async def _async_edited_room(
         vol.Required(ATTR_ROOM): str,
         vol.Required("config"): dict,
         vol.Required(ATTR_ACTIVITY): str,
-        vol.Optional("mode", default="start"): vol.In(["start", "stop"]),
+        vol.Optional("mode", default="start"): vol.In(["start", "stop", "monitor"]),
         vol.Optional("from"): vol.Any(None, str),
     }
 )
@@ -449,7 +451,9 @@ async def ws_config_flow(
     others: dict[str, Any] = {}
     for coordinator in _coordinators(hass):
         others.update(coordinator.rooms)
-    if msg["mode"] == "stop":
+    if msg["mode"] == "monitor":
+        flow = plan_monitor(hass, room, activity)
+    elif msg["mode"] == "stop":
         flow = plan_stop(hass, room_id, room, activity, others)
     else:
         flow = plan_start(hass, room_id, room, activity, previous, others)

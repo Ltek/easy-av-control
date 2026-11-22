@@ -103,6 +103,48 @@ DEFAULT_BEFORE_TIMEOUT: Final = 90
 # Per activity: entities whose state starts it (a Harmony hub switching to its activity, a wall switch), and stops it
 CONF_STARTED_BY: Final = "started_by"
 CONF_STOP_STATE: Final = "stop_state"
+
+# Monitor (monitor.py). A device: watched for being on when nothing uses it
+CONF_WATCH: Final = "watch"
+CONF_MODE: Final = "mode"
+CONF_GRACE: Final = "grace"
+WATCH_OFF: Final = "off"
+WATCH_NOTIFY: Final = "notify"
+WATCH_TURN_OFF: Final = "turn_off"
+WATCH_MODES: Final = [WATCH_OFF, WATCH_NOTIFY, WATCH_TURN_OFF]
+DEFAULT_WATCH_GRACE: Final = 120
+DEFAULT_WATCH_TURN_OFF_AFTER: Final = 600
+# An activity, while it is active: a device lost, the picture lost, nothing playing (auto-off). 0 = not watched
+CONF_MONITOR: Final = "monitor"
+CONF_LOST_AFTER: Final = "lost_after"
+CONF_PICTURE_LOST_AFTER: Final = "picture_lost_after"
+CONF_IDLE_AFTER: Final = "idle_after"
+CONF_IDLE_WARNING: Final = "idle_warning"
+DEFAULT_LOST_AFTER: Final = 60
+DEFAULT_PICTURE_LOST_AFTER: Final = 60
+DEFAULT_IDLE_WARNING: Final = 300
+PROBLEM_ON_UNEXPECTEDLY: Final = "on_unexpectedly"
+PROBLEM_DEVICE_LOST: Final = "device_lost"
+PROBLEM_PICTURE_LOST: Final = "picture_lost"
+PROBLEM_LEFT_ON: Final = "left_on"
+PROBLEM_DEVICE_ERROR: Final = "device_error"
+PROBLEMS: Final = [
+    PROBLEM_ON_UNEXPECTEDLY, PROBLEM_DEVICE_LOST, PROBLEM_PICTURE_LOST, PROBLEM_LEFT_ON, PROBLEM_DEVICE_ERROR,
+]
+ACTION_TURN_OFF: Final = "turn_off"
+ACTION_TURN_ON: Final = "turn_on"
+ACTION_KEEP_ON: Final = "keep_on"
+ACTION_SHUTDOWN: Final = "shutdown"
+ACTION_DISMISS: Final = "dismiss"
+# What a notification button (or anyone) may ask the integration to do about each problem
+PROBLEM_ACTIONS: Final = {
+    PROBLEM_ON_UNEXPECTEDLY: [ACTION_TURN_OFF, ACTION_KEEP_ON],
+    PROBLEM_DEVICE_LOST: [ACTION_TURN_ON, ACTION_SHUTDOWN, ACTION_DISMISS],
+    PROBLEM_PICTURE_LOST: [ACTION_SHUTDOWN, ACTION_DISMISS],
+    PROBLEM_LEFT_ON: [ACTION_KEEP_ON, ACTION_SHUTDOWN],
+    PROBLEM_DEVICE_ERROR: [ACTION_TURN_OFF, ACTION_DISMISS],
+}
+EVENT_MONITOR: Final = "easy_av_control_monitor"
 FAILURE_WARN: Final = "warn"
 FAILURE_STOP: Final = "stop"
 FAILURE_RETRY: Final = "retry"
@@ -148,6 +190,9 @@ SERVICE_START_ACTIVITY: Final = "start_activity"
 SERVICE_STOP_ACTIVITY: Final = "stop_activity"
 SERVICE_TOGGLE_ACTIVITY: Final = "toggle_activity"
 SERVICE_RELOAD: Final = "reload"
+SERVICE_MONITOR_ACTION: Final = "monitor_action"
+ATTR_PROBLEM: Final = "problem"
+ATTR_ACTION: Final = "action"
 SERVICE_SEND_COMMAND: Final = "send_command"
 
 # Attributes

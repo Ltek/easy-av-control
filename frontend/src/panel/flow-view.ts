@@ -20,7 +20,7 @@ type Flow =
   | { error: { path: string[]; message: string } }
   | { error: null; rows: Row[]; done: [number, number]; room?: Room };
 
-type Mode = "start" | "stop";
+type Mode = "start" | "stop" | "monitor";
 
 /** Wait this long after the last change before asking for the flow again. */
 const DEBOUNCE = 400;
@@ -45,6 +45,11 @@ const ICONS: Record<string, string> = {
   step: "mdi:tune-variant",
   delay: "mdi:timer-outline",
   started_by: "mdi:gesture-tap-button",
+  monitor_lost: "mdi:lan-disconnect",
+  monitor_picture: "mdi:image-off-outline",
+  monitor_idle: "mdi:sleep",
+  monitor_error: "mdi:alert-circle-outline",
+  monitor_watch: "mdi:eye-outline",
   wait_for: "mdi:clock-check-outline",
 };
 
@@ -67,6 +72,10 @@ function removable(row: Row, header: Row | undefined, mode: string): boolean {
     case "delay":
     case "wait_for":
     case "started_by":
+    case "monitor_lost":
+    case "monitor_picture":
+    case "monitor_idle":
+    case "monitor_watch":
     case "check":
     case "step":
     case "hook":
@@ -102,6 +111,10 @@ const ACTIVITY_PANELS: Record<string, string> = {
   hook_wait: "section_advanced",
   already_on: "section_activity_devices",
   started_by: "started_by",
+  monitor_lost: "monitor",
+  monitor_picture: "monitor",
+  monitor_idle: "monitor",
+  monitor_error: "monitor",
 };
 
 
@@ -401,6 +414,20 @@ export class EasyAvControlFlow extends LitElement {
         });
       case "delay":
         return this._t("flow.delay", { seconds: this._seconds(row.seconds) });
+      case "monitor_lost":
+        return this._t("flow.monitor_lost", { seconds: this._seconds(row.seconds) });
+      case "monitor_picture":
+        return this._t("flow.monitor_picture", { seconds: this._seconds(row.seconds) });
+      case "monitor_idle":
+        return this._t("flow.monitor_idle", { idle: this._duration(Number(row.seconds)), warning: this._duration(Number(row.warning)) });
+      case "monitor_error":
+        return this._t("flow.monitor_error");
+      case "monitor_watch":
+        return this._t(row.mode === "turn_off" ? "flow.monitor_watch_off" : "flow.monitor_watch", {
+          device,
+          grace: this._duration(Number(row.grace)),
+          after: this._duration(Number(row.turn_off_after)),
+        });
       case "started_by":
         return this._t(this._mode === "stop" ? "flow.stopped_by" : "flow.started_by", {
           entity: this._entity(row.entity_id),
@@ -485,6 +512,7 @@ export class EasyAvControlFlow extends LitElement {
     const device = (row.device as string | undefined) ?? (header?.kind === "device" ? (header.device as string) : undefined);
     if (header?.kind === "device" && device && DEVICE_PANELS[row.kind]) return { device, panel: DEVICE_PANELS[row.kind] };
     if (header?.kind === "steps" && NESTED.has(row.kind)) return { panel: "steps" };
+    if (row.kind === "monitor_watch" && device) return { device, panel: "section_monitor" };
     if (ACTIVITY_PANELS[row.kind]) return { panel: ACTIVITY_PANELS[row.kind] };
     if (row.kind === "device" && device) return { device, panel: "section_device" };
     return undefined;
@@ -621,7 +649,7 @@ export class EasyAvControlFlow extends LitElement {
         </div>
       </details>
       <div class="modes" role="tablist">
-        ${(["start", "stop"] as Mode[]).map(
+        ${(["start", "stop", "monitor"] as Mode[]).map(
           (mode) => html`<button
             role="tab"
             class=${this._mode === mode ? "active" : ""}
@@ -673,7 +701,9 @@ export class EasyAvControlFlow extends LitElement {
     const [min, max] = flow.done;
     const background = flow.rows.filter((row) => row.background).map((row) => row.at[0]);
     const summary =
-      this._mode === "start"
+      this._mode === "monitor"
+        ? this._t("flow.summary_monitor")
+        : this._mode === "start"
         ? this._t(min === max ? "flow.summary_start_fixed" : "flow.summary_start", {
             min: this._seconds(min),
             max: this._seconds(max),

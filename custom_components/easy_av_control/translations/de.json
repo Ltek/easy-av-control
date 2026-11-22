@@ -101,6 +101,23 @@
       "active": {
         "name": "Aktiv"
       }
+    },
+    "binary_sensor": {
+      "on_unexpectedly": {
+        "name": "Gerät unerwartet an"
+      },
+      "device_lost": {
+        "name": "Gerät verloren"
+      },
+      "picture_lost": {
+        "name": "Bild verloren"
+      },
+      "left_on": {
+        "name": "Angelassen"
+      },
+      "device_error": {
+        "name": "Gerätefehler"
+      }
     }
   },
   "services": {
@@ -165,6 +182,28 @@
         "device": {
           "name": "Gerät",
           "description": "Optional: an dieses Gerät statt an das zugeordnete senden; geht auch, wenn nichts läuft"
+        }
+      }
+    },
+    "monitor_action": {
+      "name": "Monitor-Aktion",
+      "description": "Sagt Easy AV Control, was mit einem Problem des Monitors geschehen soll: ausschalten, einschalten, anlassen, herunterfahren oder verwerfen.",
+      "fields": {
+        "room": {
+          "name": "Raum",
+          "description": "Die ID des Raums."
+        },
+        "problem": {
+          "name": "Problem",
+          "description": "Die Art des Problems."
+        },
+        "action": {
+          "name": "Aktion",
+          "description": "Was geschehen soll: turn_off, turn_on, keep_on, shutdown oder dismiss; jedes Problem nennt seine im Attribut actions seines Sensors."
+        },
+        "device": {
+          "name": "Gerät",
+          "description": "Nur dieses Gerät (seine ID im Raum); ohne: jedes Gerät mit dem Problem."
         }
       }
     }

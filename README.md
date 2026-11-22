@@ -481,6 +481,33 @@ The short version is below; [ACTIVITY_FLOW.md](ACTIVITY_FLOW.md) shows the whole
 
 For the example above: VU+, projector and Onkyo off → room idle → multimedia outlet off → 180 s later the projector outlet off.
 
+### Monitor
+
+Between startups and shutdowns the monitor looks at the devices every few seconds. Each kind of problem is a binary
+sensor per room, on while it lasts, with the devices, since when, what is planned and what can be done as attributes:
+
+| Sensor (`binary_sensor.av_<room>_…`) | On when | Set in |
+|---|---|---|
+| `device_on_unexpectedly` | A device is on while nothing uses it (the room is idle, or the running activity doesn't include it), after its grace time (2 min) | The device's **Monitor** panel: notify (default), notify then turn off after a time, or don't watch |
+| `device_lost` | A device of the active activity is off or unreachable (60 s) | The activity's Flow, **While active** |
+| `picture_lost` | A check of the active activity (the picture) fails (60 s) | The same |
+| `left_on` | Auto-off: none of the active activity's media players has played for a time (off by default). It then shuts down after a warning time (5 min) | The same |
+| `device_error` | A device reports an error state | Always |
+
+Startups and shutdowns never raise a problem, nor do devices whose outlet or later turn-off is pending.
+
+What to do about a problem is always done by the integration, through the `easy_av_control.monitor_action` action:
+
+```yaml
+action: easy_av_control.monitor_action
+data: {room: theater, problem: on_unexpectedly, action: turn_off}   # device: optional, else every device with it
+```
+
+Each problem lists its actions in the sensor's `actions` attribute: `turn_off` and `keep_on` (on unexpectedly),
+`turn_on`, `shutdown` and `dismiss` (lost), `keep_on` and `shutdown` (left on), `turn_off` and `dismiss` (error).
+`keep_on` and `dismiss` silence the problem until its cause is gone; `keep_on` on auto-off starts its idle time
+again. Every change also fires the `easy_av_control_monitor` event.
+
 ### Commands while something runs
 
 A new command cancels whatever runs in the room: a stop during a long start takes effect immediately, and a stop from the `error` state switches off what the failed start had already powered. Sending the command that is already running just waits for it.

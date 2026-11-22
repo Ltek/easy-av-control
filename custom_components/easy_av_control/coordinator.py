@@ -206,6 +206,7 @@ from .device_state import (
 from .device_timings import MAX_SAMPLES, add_sample, is_slow, typical
 from .history import RunRecorder, history_of
 from .model import CONF_DELAY_AFTER, async_validate_config, find_missing_entities
+from .monitor import Monitor
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -417,6 +418,7 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._unsub_started_by: CALLBACK_TYPE | None = None
         # Room -> the Started by change that sent its next command, for its run's trace
         self._triggered: dict[str, dict[str, str]] = {}
+        self.monitor = Monitor(self)
         # Integration profiles (device_profiles.py), loaded at setup
         self.profiles: dict[str, Profile] = {}
         # Measured times (device_timings.py): device entity -> {"on": [s, ...], "off": [s, ...]}
@@ -542,6 +544,7 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self._async_restore()
         self._track_sources()
         self._track_started_by()
+        self.monitor.start()
 
         return config
 
@@ -683,6 +686,7 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self._unsub_started_by is not None:
             self._unsub_started_by()
             self._unsub_started_by = None
+        self.monitor.stop()
         for rt in self._runtime.values():
             for task in [rt.task, *rt.pending_cuts.values()]:
                 if task and not task.done():

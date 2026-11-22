@@ -27,9 +27,11 @@ from .card_resource import (
     copy_to_www,
 )
 from .const import (
+    ATTR_ACTION,
     ATTR_ACTIVITY,
     ATTR_COMMAND,
     ATTR_DEVICE,
+    ATTR_PROBLEM,
     ATTR_ROOM,
     ATTR_VALUE,
     CARD_FILENAME,
@@ -41,6 +43,8 @@ from .const import (
     LOCAL_DIR,
     LOCAL_URL_BASE,
     PANEL_FILENAME,
+    PROBLEMS,
+    SERVICE_MONITOR_ACTION,
     SERVICE_RELOAD,
     SERVICE_SEND_COMMAND,
     SERVICE_START_ACTIVITY,
@@ -57,13 +61,20 @@ from .sidebar import async_register_panel
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.SCENE, Platform.SWITCH, Platform.SENSOR, Platform.SELECT]
+PLATFORMS: list[Platform] = [Platform.SCENE, Platform.SWITCH, Platform.SENSOR, Platform.SELECT, Platform.BINARY_SENSOR]
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 _ROOM_SCHEMA = vol.Schema({vol.Required(ATTR_ROOM): cv.string})
 _ACTIVITY_SCHEMA = _ROOM_SCHEMA.extend({vol.Optional(ATTR_ACTIVITY): cv.string})
 _START_SCHEMA = _ROOM_SCHEMA.extend({vol.Required(ATTR_ACTIVITY): cv.string})
+_MONITOR_SCHEMA = _ROOM_SCHEMA.extend(
+    {
+        vol.Required(ATTR_PROBLEM): vol.In(PROBLEMS),
+        vol.Required(ATTR_ACTION): cv.string,
+        vol.Optional(ATTR_DEVICE): cv.string,
+    }
+)
 _SEND_COMMAND_SCHEMA = _ROOM_SCHEMA.extend(
     {
         vol.Required(ATTR_COMMAND): cv.string,
@@ -149,6 +160,17 @@ def _register_services(hass: HomeAssistant) -> None:
         DOMAIN, SERVICE_SEND_COMMAND, handle_send_command, schema=_SEND_COMMAND_SCHEMA
     )
     hass.services.async_register(DOMAIN, SERVICE_RELOAD, handle_reload)
+
+    async def handle_monitor_action(call: ServiceCall) -> None:
+        room_id = call.data[ATTR_ROOM]
+        try:
+            await _coordinator_for_room(hass, room_id).monitor.async_action(
+                room_id, call.data[ATTR_PROBLEM], call.data[ATTR_ACTION], call.data.get(ATTR_DEVICE)
+            )
+        except ValueError as err:
+            raise ServiceValidationError(str(err)) from err
+
+    hass.services.async_register(DOMAIN, SERVICE_MONITOR_ACTION, handle_monitor_action, schema=_MONITOR_SCHEMA)
 
 
 async def _async_register_frontend(hass: HomeAssistant) -> None:

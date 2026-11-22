@@ -26,6 +26,8 @@ export interface Device extends Obj {
   /** A select device (Harmony activities): the option for on, and for off */
   option?: string;
   off_option?: string;
+  /** Monitor: what to do when it is on while nothing uses it */
+  watch?: { mode?: "off" | "notify" | "turn_off"; grace?: number; turn_off_after?: number };
   commands?: Obj;
 }
 
@@ -51,6 +53,8 @@ export interface Activity extends Obj {
   checks?: Obj[];
   before?: Record<string, Before>;
   /** Entities whose state starts the activity (a Harmony hub's activity), and optionally shuts it down */
+  /** Monitor while active, in seconds; 0 turns a check off */
+  monitor?: { lost_after?: number; picture_lost_after?: number; idle_after?: number; idle_warning?: number };
   started_by?: { entity_id: string; state: string | string[]; stop_state?: string | string[] }[];
   on_start?: unknown[];
   on_stop?: unknown[];

@@ -181,6 +181,13 @@ await page.locator('easy-av-control-flow [slot="add-start"] button.ltek-add', { 
 await settle(1200);
 await page.locator('easy-av-control-flow [slot="add-start"] .inline-add').scrollIntoViewIfNeeded();
 await shotBoth('activity-started-by');
+// While active: the monitor
+await page.locator('easy-av-control-flow .modes button', { hasText: 'While active' }).click();
+await settle(1500);
+await page.locator('easy-av-control-flow [slot="add-monitor"] button.ltek-add', { hasText: 'Auto-off' }).click();
+await settle(1500);
+await page.locator('easy-av-control-flow').scrollIntoViewIfNeeded();
+await shotBoth('activity-monitor');
 await page.locator('easy-av-control-room-editor summary', { hasText: 'Remote control preview' }).click();
 await settle(2500);
 await page.locator('easy-av-control-remote-preview').scrollIntoViewIfNeeded();

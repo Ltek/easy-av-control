@@ -100,6 +100,7 @@ const DEVICE_SECTIONS: [string, string][] = [
   ["section_power", "mdi:power-socket-eu"],
   ["section_delays", "mdi:timer-sand"],
   ["section_ready", "mdi:lan-connect"],
+  ["section_monitor", "mdi:eye-outline"],
 ];
 const DEVICE_HINTS: Record<string, string> = {
   section_device: "hint_device",
@@ -107,6 +108,7 @@ const DEVICE_HINTS: Record<string, string> = {
   section_power: "hint_power",
   section_delays: "hint_delays",
   section_ready: "hint_ready",
+  section_monitor: "hint_monitor",
 };
 
 export class EasyAvControlRoomEditor extends LitElement {
@@ -619,9 +621,68 @@ export class EasyAvControlRoomEditor extends LitElement {
                 ]
               : []),
           ])}`;
+      case "section_monitor": {
+        const watch = device.watch ?? {};
+        const mode = watch.mode ?? "notify";
+        return html`<ltek-form
+          .hass=${this.hass}
+          .data=${{ watch_mode: mode, watch_grace: watch.grace ?? 120, watch_turn_off_after: watch.turn_off_after ?? 600 }}
+          .schema=${[
+            {
+              name: "watch_mode",
+              selector: { select: { mode: "dropdown", options: ["off", "notify", "turn_off"].map((v) => ({ value: v, label: this._t(`watch.${v}`) })) } },
+            },
+            ...(mode === "off"
+              ? []
+              : [
+                  { name: "watch_grace", selector: slider(1800, 10) },
+                  ...(mode === "turn_off" ? [{ name: "watch_turn_off_after", selector: slider(3600, 30) }] : []),
+                ]),
+          ]}
+          .computeLabel=${this._label}
+          @value-changed=${(ev: CustomEvent) => {
+            const v = ev.detail.value as Obj;
+            const next = clean({
+              mode: v.watch_mode === "notify" ? undefined : v.watch_mode,
+              grace: v.watch_grace === 120 ? undefined : v.watch_grace,
+              turn_off_after: v.watch_turn_off_after === 600 ? undefined : v.watch_turn_off_after,
+            }) as Device["watch"];
+            const updated = clean({ ...device, watch: next }) as Device;
+            this._emit({ ...this.room, devices: { ...this.room.devices, [id]: updated } });
+          }}
+        ></ltek-form>`;
+      }
       default:
         return html``;
     }
+  }
+
+  /** The activity's monitor while it is active: lost, picture, auto-off. */
+  private _renderMonitor(id: string, activity: Activity): TemplateResult {
+    const m = activity.monitor ?? {};
+    const data = {
+      lost_after: m.lost_after ?? 60,
+      picture_lost_after: m.picture_lost_after ?? 60,
+      idle_after_min: Math.round((m.idle_after ?? 0) / 60),
+      idle_warning_min: Math.round((m.idle_warning ?? 300) / 60),
+    };
+    const minutes = (max: number, step = 1) => ({ number: { min: 0, max, step, mode: "slider", unit_of_measurement: "min" } });
+    return html`<p class="ltek-hint">${this._t("monitor_hint")}</p>
+      <ltek-form
+        .hass=${this.hass}
+        .data=${data}
+        .schema=${[
+          { name: "lost_after", selector: slider(600, 10) },
+          ...((activity.checks ?? []).length ? [{ name: "picture_lost_after", selector: slider(600, 10) }] : []),
+          { name: "idle_after_min", selector: minutes(240, 5) },
+          ...(data.idle_after_min ? [{ name: "idle_warning_min", selector: minutes(30) }] : []),
+        ]}
+        .computeLabel=${this._label}
+        @value-changed=${(ev: CustomEvent) => {
+          const v = { ...data, ...(ev.detail.value as Obj) } as typeof data;
+          this._setActivity(id, { ...activity, monitor: monitorConfig(v) });
+        }}
+      ></ltek-form>`;
   }
 
   /** Power Outlet: a checkbox, then the outlet and its delay, greyed out while it is off. */
@@ -1084,6 +1145,7 @@ export class EasyAvControlRoomEditor extends LitElement {
         : nothing}
       <div slot="add-start">${this._flowAdder(id, activity, "start")}</div>
       <div slot="add-stop">${this._flowAdder(id, activity, "stop")}</div>
+      <div slot="add-monitor">${this._monitorAdder(id, activity)}</div>
     </easy-av-control-flow>`;
   }
 
@@ -1126,6 +1188,8 @@ export class EasyAvControlRoomEditor extends LitElement {
     switch (target.panel) {
       case "started_by":
         return html`${this._renderStartedBy(id, activity)}${done}`;
+      case "monitor":
+        return html`${this._renderMonitor(id, activity)}${done}`;
       case "section_checks":
         return html`${this._renderChecks(id, activity)}${done}`;
       case "steps":
@@ -1391,6 +1455,28 @@ export class EasyAvControlRoomEditor extends LitElement {
         : nothing}`;
   }
 
+  /** Under the While active view: + for a monitor check that is off. */
+  private _monitorAdder(id: string, activity: Activity): TemplateResult {
+    const m = activity.monitor ?? {};
+    const set = (patch: Obj) => {
+      this._setActivity(id, { ...activity, monitor: monitorConfig({ ...m, ...patch }) });
+      const kind = "idle_after" in patch ? "monitor_idle" : "lost_after" in patch ? "monitor_lost" : "monitor_picture";
+      this._flowEditing = { key: `${kind}|||||`, panel: "monitor" };
+    };
+    const off = (v: number | undefined, d: number) => (v ?? d) === 0;
+    if (!off(m.idle_after, 0) && !off(m.lost_after, 60) && !((activity.checks ?? []).length && off(m.picture_lost_after, 60))) {
+      return html``;
+    }
+    return html`<div class="flow-add">
+      <span class="ltek-hint">${this._t("flow.add_monitor_hint")}</span>
+      ${off(m.idle_after, 0) ? html`<button class="ltek-add" @click=${() => set({ idle_after: 1800 })}>+ ${this._t("flow.add_monitor_idle")}</button>` : nothing}
+      ${off(m.lost_after, 60) ? html`<button class="ltek-add" @click=${() => set({ lost_after: 60 })}>+ ${this._t("flow.add_monitor_lost")}</button>` : nothing}
+      ${(activity.checks ?? []).length && off(m.picture_lost_after, 60)
+        ? html`<button class="ltek-add" @click=${() => set({ picture_lost_after: 60 })}>+ ${this._t("flow.add_monitor_picture")}</button>`
+        : nothing}
+    </div>`;
+  }
+
   /** A Flow row's trash icon. Device settings change for every activity that uses the device. */
   private _flowDelete(id: string, activity: Activity, detail: FlowDelete): void {
     const { row, header, device: deviceId } = detail;
@@ -1412,6 +1498,21 @@ export class EasyAvControlRoomEditor extends LitElement {
       case "hook":
         this._setActivity(id, { ...activity, [String(row.hook)]: [] });
         return;
+      case "monitor_lost":
+      case "monitor_picture":
+      case "monitor_idle": {
+        const key = { monitor_lost: "lost_after", monitor_picture: "picture_lost_after", monitor_idle: "idle_after" }[row.kind];
+        this._setActivity(id, { ...activity, monitor: monitorConfig({ ...(activity.monitor ?? {}), [key]: 0 }) });
+        return;
+      }
+      case "monitor_watch": {
+        const device = deviceId ? this.room.devices?.[deviceId] : undefined;
+        if (device && deviceId) {
+          const next = clean({ ...device, watch: { ...(device.watch ?? {}), mode: "off" } }) as Device;
+          this._emit({ ...this.room, devices: { ...this.room.devices, [deviceId]: next } });
+        }
+        return;
+      }
       case "started_by": {
         const index = Number(row.index) - 1;
         const entry = activity.started_by?.[index];
@@ -2557,4 +2658,17 @@ function newStep(type: string, activity: Activity, room: Room): Step {
 /** The device a new check is for: the first with a picture check and none yet, else the first. */
 function firstPictureDevice(chosen: string[], checks: Obj[]): string {
   return chosen.find((d) => !checks.some((c) => c.device === d && !c.entity_id)) ?? chosen[0];
+}
+
+/** An activity's monitor from the form (minutes for auto-off), without the defaults. */
+function monitorConfig(v: Obj): Activity["monitor"] {
+  const idle = v.idle_after_min !== undefined ? Number(v.idle_after_min) * 60 : Number(v.idle_after ?? 0);
+  const warning = v.idle_warning_min !== undefined ? Number(v.idle_warning_min) * 60 : Number(v.idle_warning ?? 300);
+  const out = clean({
+    lost_after: Number(v.lost_after ?? 60) === 60 ? undefined : Number(v.lost_after),
+    picture_lost_after: Number(v.picture_lost_after ?? 60) === 60 ? undefined : Number(v.picture_lost_after),
+    idle_after: idle || undefined,
+    idle_warning: !idle || warning === 300 ? undefined : warning,
+  }, ["lost_after", "picture_lost_after"].filter((k) => Number(v[k]) === 0));
+  return Object.keys(out).length ? out : undefined;
 }

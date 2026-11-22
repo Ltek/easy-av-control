@@ -30,12 +30,18 @@ from .const import (
     CONF_DEVICE,
     CONF_DEVICES,
     CONF_ENTITY_ID,
+    CONF_GRACE,
+    CONF_IDLE_AFTER,
+    CONF_IDLE_WARNING,
+    CONF_LOST_AFTER,
+    CONF_MODE,
     CONF_NAME,
     CONF_OFF_OPTION,
     CONF_ON_START,
     CONF_ON_STOP,
     CONF_ON_TIMEOUT,
     CONF_OPTION,
+    CONF_PICTURE_LOST_AFTER,
     CONF_POWER_SWITCH,
     CONF_READY,
     CONF_RELOAD_INTEGRATION,
@@ -54,6 +60,7 @@ from .const import (
     STEP_TYPE_POWER_ON,
     STEP_TYPE_WAIT_AVAILABLE,
     STEP_TYPE_WAIT_PICTURE,
+    WATCH_OFF,
 )
 from .control import action_names
 from .coordinator import can_switch, power_service, power_switches, step_service
@@ -66,6 +73,7 @@ from .device_state import (
 )
 from .device_timings import typical_of
 from .model import CONF_DELAY_AFTER
+from .monitor import monitor_of, watch_of
 from .profile_library import profiles_of
 
 
@@ -561,3 +569,36 @@ def plan_stop(
         rows.append(row)
 
     return {"rows": rows, "done": done}
+
+
+def plan_monitor(hass: HomeAssistant, room: dict[str, Any], activity_id: str) -> dict[str, Any]:
+    """What the monitor watches while the activity is active, and which devices it watches at other times."""
+    activity = room[CONF_ACTIVITIES][activity_id]
+    monitor = monitor_of(activity)
+    at = [0.0, 0.0]
+    rows: list[dict[str, Any]] = [{"kind": "state", "at": at, "state": "active"}]
+    if monitor[CONF_LOST_AFTER]:
+        rows.append({"kind": "monitor_lost", "at": at, "seconds": monitor[CONF_LOST_AFTER]})
+    if monitor[CONF_PICTURE_LOST_AFTER] and activity.get(CONF_CHECKS):
+        rows.append({"kind": "monitor_picture", "at": at, "seconds": monitor[CONF_PICTURE_LOST_AFTER]})
+    if monitor[CONF_IDLE_AFTER]:
+        rows.append(
+            {"kind": "monitor_idle", "at": at, "seconds": monitor[CONF_IDLE_AFTER], "warning": monitor[CONF_IDLE_WARNING]}
+        )
+    rows.append({"kind": "monitor_error", "at": at})
+    for device_id, device in room[CONF_DEVICES].items():
+        watch = watch_of(device)
+        if watch[CONF_MODE] == WATCH_OFF or effective_source(hass, profiles_of(hass), device) is None:
+            continue
+        rows.append(
+            {
+                "kind": "monitor_watch",
+                "at": at,
+                "device": device_id,
+                "entity_id": device[CONF_ENTITY_ID],
+                "mode": watch[CONF_MODE],
+                "grace": watch[CONF_GRACE],
+                "turn_off_after": watch[CONF_TURN_OFF_AFTER],
+            }
+        )
+    return {"rows": rows, "done": at}

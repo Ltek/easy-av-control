@@ -1,5 +1,22 @@
 # Changelog
 
+## v2026.11.22.21
+
+**Added**
+- **Monitor**: between startups and shutdowns, the devices are checked every few seconds. Each kind of problem is
+  a binary sensor per room (`binary_sensor.av_<room>_…`), on while it lasts:
+  - **Device on unexpectedly**: a device is on while nothing uses it, after 2 min. Set per device in its new
+    **Monitor** panel: notify (default), notify then turn it off after a time, or don't watch.
+  - **Device lost** / **Picture lost**: while the activity is active, a device is off or unreachable, or a check
+    fails, for 60 s.
+  - **Left on** (auto-off, off by default): nothing has played for a time; the activity shuts down after a warning.
+  - **Device error**: a device reports an error state.
+- The Flow's new **While active** view shows and edits what the monitor watches; ✎, the trash icon and + work as
+  in Startup and Shutdown.
+- `easy_av_control.monitor_action`: what to do about a problem (turn off, turn on, keep on, shut down, dismiss).
+  The integration does it; a notification button only calls this. Each sensor lists its actions. The
+  `easy_av_control_monitor` event reports every change.
+
 ## v2026.11.22.20
 
 **Added**
