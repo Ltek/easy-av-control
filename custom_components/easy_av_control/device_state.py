@@ -48,6 +48,7 @@ from .const import (
     CONF_WAIT_ON,
     FAILURE_WARN,
     STATE_SOURCE_NONE,
+    WAIT_NONE,
     WAIT_STATUS,
     WAIT_TIME,
 )
@@ -175,7 +176,9 @@ def check_failure(device: dict[str, Any], check: dict[str, Any]) -> str:
 
 
 def wait_mode(device: dict[str, Any], source: StateSource | None, *, on: bool) -> str:
-    """status, time or both. Status needs a state source; without one it is always time."""
+    """status, time, both or none. Status needs a state source; without one it is time (or none)."""
+    if device.get(CONF_WAIT_ON if on else CONF_WAIT_OFF) == WAIT_NONE:
+        return WAIT_NONE
     if source is None:
         return WAIT_TIME
     return device.get(CONF_WAIT_ON if on else CONF_WAIT_OFF) or WAIT_STATUS

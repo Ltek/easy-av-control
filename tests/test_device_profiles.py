@@ -29,6 +29,7 @@ def test_every_builtin_profile_is_valid():
         "androidtv_remote",
         "cast",
         "jvc_projector_ha",
+        "harmony",
         "lumagen",
         "media_player",
         "pipup",
@@ -305,3 +306,9 @@ def test_config_entry_host():
 async def test_async_load_profiles(hass: HomeAssistant):
     profiles = await dp.async_load_profiles(hass)
     assert "jvc_projector_ha" in profiles
+
+
+def test_classify_harmony_is_on_unless_powered_off():
+    indicator = dp.load_profiles()["harmony"].indicator
+    assert dp.classify(indicator, State("select.harmony_hub_activities", "power_off")) == dp.GROUP_OFF
+    assert dp.classify(indicator, State("select.harmony_hub_activities", "On")) == dp.GROUP_ON

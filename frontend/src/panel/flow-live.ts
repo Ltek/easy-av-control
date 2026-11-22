@@ -16,6 +16,7 @@ export type RowStatus = "done" | "active" | "failed" | "todo";
 /** Rows that belong to the device or group header above them. */
 export const NESTED = new Set([
   "boot", "reload", "ready", "status", "picture", "check", "turn_on", "wait", "already_on", "step", "turn_off",
+  "delay", "wait_for",
 ]);
 /** Rows that start a group: a device, the checks, the steps. */
 export const HEADERS = new Set(["device", "checks", "steps"]);
@@ -51,6 +52,11 @@ export function currentRow(rows: Row[], current: Live["current"]): number {
     case "turn_on":
     case "status":
       return find((r, i) => r.kind === current.kind && ofDevice(i));
+    case "reach":
+      return find((r, i) => r.kind === "turn_on" && ofDevice(i));
+    case "delay":
+    case "before":
+      return find((r, i) => r.kind === (current.kind === "delay" ? "delay" : "wait_for") && ofDevice(i));
     case "warm_up":
       return find((r, i) => r.kind === "wait" && r.reason === "delay_after_on" && ofDevice(i));
     case "turn_off":

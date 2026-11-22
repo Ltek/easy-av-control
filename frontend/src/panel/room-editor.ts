@@ -51,6 +51,7 @@ import {
   type ProfileView,
 } from "./device-state";
 import "./flow-view";
+import { withBefore, withoutDevice, type Before } from "./model";
 import "./ltek-form";
 import { ltekChrome, ltekPanelScale, ltekTokens } from "./ltek-styles";
 import "./remote-preview";
@@ -92,6 +93,22 @@ const CARD_ICONS: Record<string, string> = {
 };
 const SHORT = slider(120);
 
+/** A device's settings, in order: [panel title key, icon]; its hint key is in DEVICE_HINTS. */
+const DEVICE_SECTIONS: [string, string][] = [
+  ["section_device", "mdi:television"],
+  ["section_state", "mdi:state-machine"],
+  ["section_power", "mdi:power-socket-eu"],
+  ["section_delays", "mdi:timer-sand"],
+  ["section_ready", "mdi:lan-connect"],
+];
+const DEVICE_HINTS: Record<string, string> = {
+  section_device: "hint_device",
+  section_state: "hint_state",
+  section_power: "hint_power",
+  section_delays: "hint_delays",
+  section_ready: "hint_ready",
+};
+
 export class EasyAvControlRoomEditor extends LitElement {
   static properties = {
     hass: { attribute: false },
@@ -108,6 +125,7 @@ export class EasyAvControlRoomEditor extends LitElement {
     profiles: { attribute: false },
     jump: { attribute: false },
     _powerOn: { state: true },
+    _flowEditing: { state: true },
   };
 
   declare hass: HomeAssistant;
@@ -133,6 +151,8 @@ export class EasyAvControlRoomEditor extends LitElement {
   declare jump?: { activity?: string; flow: boolean; n: number };
   /** Devices whose outlet is ticked but not picked yet */
   declare _powerOn: Set<string>;
+  /** The Flow row being edited in place: its key (flow-view rowKey) and the panel it stands for */
+  declare _flowEditing?: { key: string; device?: string; panel: string };
   /** The outlet a device had when it was unticked, to bring back when it is ticked again */
   private _powerMemo = new Map<string, Obj>();
   private _holdTimer?: number;
@@ -180,6 +200,7 @@ export class EasyAvControlRoomEditor extends LitElement {
       this._view = { kind: "list" };
       this._notice = undefined;
     }
+    if (changed.has("_view")) this._flowEditing = undefined;
     const jump = this.jump;
     if (changed.has("jump") && jump && !jump.activity) {
       this._view = { kind: "list" };
@@ -468,6 +489,9 @@ export class EasyAvControlRoomEditor extends LitElement {
       delay_after_power: device.delay_after_power,
       delay_after_on: device.delay_after_on,
       delay_after_off: device.delay_after_off,
+      turn_off_after: device.turn_off_after,
+      option: device.option,
+      off_option: device.off_option,
       ready_enabled: ready !== null,
       ready_entity: ready?.entity_id,
       ready_state: Array.isArray(ready?.state) ? ready?.state.join(", ") : ready?.state,
@@ -504,41 +528,64 @@ export class EasyAvControlRoomEditor extends LitElement {
 
   private _renderDevice(id: string, device: Device): TemplateResult {
     const data = this._deviceData(device);
-    const ready = device.ready ?? null;
-    const remote = this._remoteOf(device.entity_id);
-    const presetApplied =
-      ready?.entity_id === remote && ready?.reload_integration === true && device.remote_entity === remote;
     const usage = deviceUsage(this.room, id);
 
     return html`
       ${this._detailHeader(this._t("tab_devices"), this._deviceTitle(id, device), () => this._deleteDevice(id))}
       ${usage.length ? html`<p class="ltek-hint">${this._t("used_by", { where: usage.join(", ") })}</p>` : nothing}
 
-      ${this._card(
-        this._t("section_device"),
-        this._t("hint_device"),
-        this._deviceForm(id, data, [
+      ${DEVICE_SECTIONS.map(([panel, icon]) => this._card(this._t(panel), this._t(DEVICE_HINTS[panel]), this._deviceSection(id, device, panel), icon))}
+      ${this._advanced(
+        this._t("hint_device_advanced"),
+        html`<label class="id">
+            ${this._t("device_id")}
+            <input
+              .value=${id}
+              @change=${(ev: Event) => this._renameDevice(id, (ev.target as HTMLInputElement).value)}
+            />
+          </label>
+          ${this._deviceForm(id, data, [{ name: "commands", selector: { object: {} } }])}`,
+      )}
+      ${this._cardDivider()}
+      ${this._card(this._t("card_settings"), this._t("device_settings_hint"), this._renderDeviceSettings(id, device))}
+    `;
+  }
+
+  /** One section of a device's settings: on its page, and in place in an activity's Flow. */
+  private _deviceSection(id: string, device: Device, panel: string): TemplateResult {
+    const data = this._deviceData(device);
+    const ready = device.ready ?? null;
+    const remote = this._remoteOf(device.entity_id);
+    const presetApplied =
+      ready?.entity_id === remote && ready?.reload_integration === true && device.remote_entity === remote;
+    const isSelect = /^(input_)?select\./.test(device.entity_id ?? "");
+    const options = ((device.entity_id ? this.hass.states[device.entity_id]?.attributes.options : undefined) as string[] | undefined) ?? [];
+    const pick = (values: string[]) => ({ select: { options: values.map((v) => ({ value: v, label: v })), mode: "dropdown", custom_value: true } });
+    switch (panel) {
+      case "section_device":
+        return this._deviceForm(id, data, [
           { name: "entity_id", required: true, selector: { entity: {} } },
           { name: "name", selector: { text: {} } },
           { name: "remote_entity", selector: { entity: { filter: { domain: "remote" } } } },
-        ]),
-        "mdi:television",
-      )}
-      ${this._card(this._t("section_state"), this._t("hint_state"), this._renderState(id, device), "mdi:state-machine")}
-      ${this._card(this._t("section_power"), this._t("hint_power"), this._renderPower(id, device, data), "mdi:power-socket-eu")}
-      ${this._card(
-        this._t("section_delays"),
-        this._t("hint_delays"),
-        this._deviceForm(id, data, [
+          ...(isSelect
+            ? [
+                { name: "option", selector: pick(options.filter((o) => o !== (device.off_option ?? "power_off"))) },
+                { name: "off_option", selector: pick(options) },
+              ]
+            : []),
+        ]);
+      case "section_state":
+        return this._renderState(id, device);
+      case "section_power":
+        return this._renderPower(id, device, data);
+      case "section_delays":
+        return this._deviceForm(id, data, [
           { name: "delay_after_on", selector: SECONDS },
           { name: "delay_after_off", selector: SECONDS },
-        ]),
-        "mdi:timer-sand",
-      )}
-      ${this._card(
-        this._t("section_ready"),
-        this._t("hint_ready"),
-        html`${remote && !presetApplied
+          { name: "turn_off_after", selector: slider(1800, 10) },
+        ]);
+      case "section_ready":
+        return html`${remote && !presetApplied
             ? html`<button class="ltek-btn preset" @click=${() => this._applyReadyPreset(id, device, remote)}>
                 ${this._t("ready_preset", { entity: remote })}
               </button>`
@@ -565,22 +612,10 @@ export class EasyAvControlRoomEditor extends LitElement {
                   },
                 ]
               : []),
-          ])}`,
-      )}
-      ${this._advanced(
-        this._t("hint_device_advanced"),
-        html`<label class="id">
-            ${this._t("device_id")}
-            <input
-              .value=${id}
-              @change=${(ev: Event) => this._renameDevice(id, (ev.target as HTMLInputElement).value)}
-            />
-          </label>
-          ${this._deviceForm(id, data, [{ name: "commands", selector: { object: {} } }])}`,
-      )}
-      ${this._cardDivider()}
-      ${this._card(this._t("card_settings"), this._t("device_settings_hint"), this._renderDeviceSettings(id, device))}
-    `;
+          ])}`;
+      default:
+        return html``;
+    }
   }
 
   /** Power Outlet: a checkbox, then the outlet and its delay, greyed out while it is off. */
@@ -818,6 +853,9 @@ export class EasyAvControlRoomEditor extends LitElement {
       delay_after_power: v.power_switch ? (v.delay_after_power as number | undefined) : undefined,
       delay_after_on: v.delay_after_on as number | undefined,
       delay_after_off: v.delay_after_off as number | undefined,
+      turn_off_after: (v.turn_off_after as number | undefined) || undefined,
+      option: v.option as string | undefined,
+      off_option: v.off_option as string | undefined,
       commands: v.commands as Obj | undefined,
     }) as Device;
     // Not part of this form: the Device state keys, kept as they are
@@ -914,7 +952,6 @@ export class EasyAvControlRoomEditor extends LitElement {
   }
 
   private _renderActivity(id: string, activity: Activity): TemplateResult {
-    const devices = Object.keys(this.room.devices ?? {});
     const chosen = activity.devices ?? [];
     const routeOptions = [
       { value: "__auto", label: this._t("route_auto") },
@@ -931,6 +968,8 @@ export class EasyAvControlRoomEditor extends LitElement {
 
     return html`
       ${this._detailHeader(this._t("tab_activities"), activity.name ?? id, () => this._deleteActivity(id, activity), this._runButtons(id))}
+
+      ${this._card(this._t("section_flow"), `${this._t("hint_flow")} ${this._t("flow.edit_hint")}`, this._renderFlowEditor(id, activity))}
 
       ${this._card(
         this._t("section_general"),
@@ -951,37 +990,6 @@ export class EasyAvControlRoomEditor extends LitElement {
         ></ltek-form>`,
       )}
 
-      ${this._card(
-        this._t("section_activity_devices"),
-        this._t("hint_activity_devices"),
-        this._renderActivityDevices(id, activity, devices, chosen),
-      )}
-
-      ${this._card(this._t("section_checks"), this._t("hint_checks"), this._renderChecks(id, activity))}
-
-      ${this._card(
-        this._t("steps"),
-        this._t("hint_steps"),
-        html`${(activity.steps ?? []).map((step, i) => this._renderStep(id, activity, step, i))}
-          ${this._picker(
-            this._t("add_step"),
-            STEP_TYPES.map((type) => ({ value: type, label: this._t(`step.${type}`) })),
-            (type) => this._setActivity(id, { ...activity, steps: [...(activity.steps ?? []), { type }] }),
-          )}`,
-      )}
-
-      ${this._card(
-        this._t("section_flow"),
-        this._t("hint_flow"),
-        html`<easy-av-control-flow
-          .hass=${this.hass}
-          .room=${this.room}
-          .roomId=${this.roomId}
-          .activityId=${id}
-          @flow-edit=${(ev: CustomEvent<{ device?: string; panel: string }>) => this._flowEdit(ev.detail)}
-        ></easy-av-control-flow>`,
-      )}
-
       ${this._advanced(
         this._t("hint_activity_advanced"),
         html`<p class="ltek-hint">${this._t("activity_id_hint", { id })}</p>
@@ -991,20 +999,6 @@ export class EasyAvControlRoomEditor extends LitElement {
             .schema=${[{ name: "activity_commands", selector: { object: {} } }]}
             .computeLabel=${this._label}
             @value-changed=${(ev: CustomEvent) => this._extrasChanged(id, activity, ev.detail.value as Obj)}
-          ></ltek-form>
-          <h4>${this._t("hooks")}</h4>
-          <ltek-form
-            .hass=${this.hass}
-            .data=${{ on_start: activity.on_start ?? [], on_stop: activity.on_stop ?? [] }}
-            .schema=${[
-              { name: "on_start", selector: { action: {} } },
-              { name: "on_stop", selector: { action: {} } },
-            ]}
-            .computeLabel=${this._label}
-            @value-changed=${(ev: CustomEvent) => {
-              const v = ev.detail.value as Obj;
-              this._setActivity(id, { ...activity, on_start: v.on_start as unknown[], on_stop: v.on_stop as unknown[] });
-            }}
           ></ltek-form>`,
       )}
 
@@ -1065,18 +1059,286 @@ export class EasyAvControlRoomEditor extends LitElement {
     `;
   }
 
-  /** A Flow row's ✎: open the panel it is set in, on the device's page or this activity's. */
-  private _flowEdit(target: { device?: string; panel: string }): void {
-    const title = this._t(target.panel);
-    if (target.device && this.room.devices?.[target.device]) {
-      this._view = { kind: "device", id: target.device };
-      this._openPanel.set(this._pageKey(), `device:${title}`);
-    } else {
-      this._openPanel.set(this._pageKey(), `activity:${title}`);
-      this.requestUpdate();
+  /** The Flow, the activity's editor: every row edits in place (✎) or goes (trash); + adds to it. */
+  private _renderFlowEditor(id: string, activity: Activity): TemplateResult {
+    const editing = this._flowEditing;
+    return html`<easy-av-control-flow
+      .hass=${this.hass}
+      .room=${this.room}
+      .roomId=${this.roomId}
+      .activityId=${id}
+      .editing=${editing?.key}
+      @flow-edit=${(ev: CustomEvent<{ key: string; device?: string; panel: string }>) => {
+        this._flowEditing = editing?.key === ev.detail.key ? undefined : ev.detail;
+      }}
+      @flow-delete=${(ev: CustomEvent<FlowDelete>) => this._flowDelete(id, activity, ev.detail)}
+    >
+      ${editing && !editing.key.startsWith("__")
+        ? html`<div slot="edit">${this._inlineEditor(id, activity, editing)}</div>`
+        : nothing}
+      <div slot="add-start">${this._flowAdder(id, activity, "start")}</div>
+      <div slot="add-stop">${this._flowAdder(id, activity, "stop")}</div>
+    </easy-av-control-flow>`;
+  }
+
+  /** What a Flow row's ✎ opens under it. */
+  private _inlineEditor(id: string, activity: Activity, target: { key: string; device?: string; panel: string }): TemplateResult {
+    const done = html`<div class="inline-bar">
+      <button class="ltek-btn" @click=${() => (this._flowEditing = undefined)}>${this._t("flow.close_edit")}</button>
+    </div>`;
+    const deviceId = target.device;
+    const device = deviceId ? this.room.devices?.[deviceId] : undefined;
+    if (target.panel === "flow.before" && deviceId) {
+      return html`${this._renderBefore(id, activity, deviceId)}${done}`;
     }
-    this._notice = undefined;
-    window.scrollTo({ top: 0 });
+    if (device && deviceId && DEVICE_HINTS[target.panel]) {
+      const header = target.key.startsWith("device|");
+      const order = activity.devices ?? [];
+      const index = order.indexOf(deviceId);
+      return html`${header
+          ? html`<div class="inline-order">
+                ${index >= 0
+                  ? this._moveButtons(order, index, (list) =>
+                      list.length < order.length
+                        ? this._setActivity(id, withoutDevice(activity, deviceId))
+                        : this._setActivity(id, { ...activity, devices: list }),
+                    )
+                  : nothing}
+              </div>
+              <h4>${this._t("flow.before")}</h4>
+              ${this._renderBefore(id, activity, deviceId)}
+              <h4>${this._t("section_device")}</h4>`
+          : html`<h4>${this._t(target.panel)}</h4>`}
+        <p class="ltek-hint">
+          ${this._t("flow.device_shared")}
+          <button class="link" @click=${() => this._show({ kind: "device", id: deviceId })}>${this._t("flow.open_device")}</button>
+        </p>
+        ${this._deviceSection(deviceId, device, header ? "section_device" : target.panel)}
+        ${header ? this._deviceSection(deviceId, device, "section_delays") : nothing}
+        ${done}`;
+    }
+    switch (target.panel) {
+      case "section_checks":
+        return html`${this._renderChecks(id, activity)}${done}`;
+      case "steps":
+        return html`${this._renderSteps(id, activity)}${done}`;
+      case "section_advanced":
+        return html`${this._renderHooks(id, activity, target.key.includes("on_stop") ? "on_stop" : "on_start")}${done}`;
+      case "section_activity_devices":
+        return html`${this._renderActivityDevices(id, activity, Object.keys(this.room.devices ?? {}), activity.devices ?? [])}${done}`;
+      default:
+        return done;
+    }
+  }
+
+  /** Before a device is turned on: a delay, then the activity's devices it waits for. */
+  private _renderBefore(id: string, activity: Activity, deviceId: string): TemplateResult {
+    const before: Before = activity.before?.[deviceId] ?? {};
+    const set = (next: Before) => this._setActivity(id, withBefore(activity, deviceId, next));
+    const waits = before.wait_for ?? [];
+    const others = (activity.devices ?? []).filter((d) => d !== deviceId);
+    const free = others.filter((d) => !waits.some((w) => w.device === d));
+    const name = (d: string) => this.room.devices?.[d]?.name ?? d;
+    return html`<p class="ltek-hint">${this._t("flow.before_hint")}</p>
+      <ltek-form
+        .hass=${this.hass}
+        .data=${{ before_delay: before.delay ?? 0 }}
+        .schema=${[{ name: "before_delay", selector: SHORT }]}
+        .computeLabel=${this._label}
+        @value-changed=${(ev: CustomEvent) => set({ ...before, delay: Number((ev.detail.value as Obj).before_delay) || undefined })}
+      ></ltek-form>
+      <div class="ltek-list">
+        ${free.length
+          ? html`<select
+              class="ltek-add add-select"
+              aria-label=${this._t("flow.add_wait_for")}
+              @change=${(ev: Event) => {
+                const el = ev.target as HTMLSelectElement;
+                if (el.value) set({ ...before, wait_for: [...waits, { device: el.value, state: "on" }] });
+                el.value = "";
+              }}
+            >
+              <option value="" selected>${this._t("flow.add_wait_for")}</option>
+              ${free.map((d) => html`<option value=${d}>${name(d)}</option>`)}
+            </select>`
+          : nothing}
+        ${waits.map(
+          (w, i) => html`<div class="ltek-item ordered-row">
+            <span class="ltek-name">${name(w.device)}</span>
+            <select
+              @change=${(ev: Event) => {
+                const list = [...waits];
+                list[i] = { ...w, state: (ev.target as HTMLSelectElement).value as "on" | "picture" };
+                set({ ...before, wait_for: list });
+              }}
+            >
+              ${(["on", "picture"] as const).map(
+                (v) => html`<option value=${v} ?selected=${(w.state ?? "on") === v}>${this._t(`wait_for.${v}`)}</option>`,
+              )}
+            </select>
+            <button
+              class="ltek-del"
+              title=${this._t("delete")}
+              aria-label=${this._t("delete")}
+              @click=${() => set({ ...before, wait_for: waits.filter((_, j) => j !== i) })}
+            >
+              <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+            </button>
+          </div>`,
+        )}
+      </div>
+      ${waits.length
+        ? html`<ltek-form
+            .hass=${this.hass}
+            .data=${{ before_timeout: before.timeout ?? 90, before_on_timeout: before.on_timeout ?? "continue" }}
+            .schema=${[
+              { name: "before_timeout", selector: slider(600, 5, 5) },
+              {
+                name: "before_on_timeout",
+                selector: {
+                  select: {
+                    mode: "dropdown",
+                    options: [
+                      { value: "continue", label: this._t("on_timeout_continue") },
+                      { value: "abort", label: this._t("on_timeout_abort") },
+                    ],
+                  },
+                },
+              },
+            ]}
+            .computeLabel=${this._label}
+            @value-changed=${(ev: CustomEvent) => {
+              const v = ev.detail.value as Obj;
+              set({ ...before, timeout: v.before_timeout as number, on_timeout: v.before_on_timeout as Before["on_timeout"] });
+            }}
+          ></ltek-form>`
+        : nothing}`;
+  }
+
+  /** Actions after start, in order, with + to add one (a device step starts with the activity's first device). */
+  private _renderSteps(id: string, activity: Activity): TemplateResult {
+    return html`${(activity.steps ?? []).map((step, i) => this._renderStep(id, activity, step, i))}
+      ${this._picker(
+        this._t("add_step"),
+        STEP_TYPES.map((type) => ({ value: type, label: this._t(`step.${type}`) })),
+        (type) => this._setActivity(id, { ...activity, steps: [...(activity.steps ?? []), newStep(type, activity, this.room)] }),
+      )}`;
+  }
+
+  /** Home Assistant actions that run alongside the start or the stop. */
+  private _renderHooks(id: string, activity: Activity, hook: "on_start" | "on_stop"): TemplateResult {
+    return html`<ltek-form
+      .hass=${this.hass}
+      .data=${{ [hook]: activity[hook] ?? [] }}
+      .schema=${[{ name: hook, selector: { action: {} } }]}
+      .computeLabel=${this._label}
+      @value-changed=${(ev: CustomEvent) => this._setActivity(id, { ...activity, [hook]: (ev.detail.value as Obj)[hook] as unknown[] })}
+    ></ltek-form>`;
+  }
+
+  /** Under the Flow: + to add a device, a check, an action. */
+  private _flowAdder(id: string, activity: Activity, mode: "start" | "stop"): TemplateResult {
+    const chosen = activity.devices ?? [];
+    const free = Object.keys(this.room.devices ?? {}).filter((d) => !chosen.includes(d));
+    const hook = mode === "start" ? "on_start" : "on_stop";
+    const adding = this._flowEditing?.key === `__${hook}`;
+    const hasHook = ((activity[hook] as unknown[] | undefined) ?? []).length > 0;
+    const open = (key: string, panel: string) => (this._flowEditing = { key, panel });
+    return html`<div class="flow-add">
+        <span class="ltek-hint">${this._t(mode === "start" ? "flow.add_hint" : "flow.add_stop_hint")}</span>
+        ${mode === "start"
+          ? html`${free.length
+                ? html`<select
+                    class="ltek-add add-select"
+                    aria-label=${this._t("flow.pick_device")}
+                    @change=${(ev: Event) => {
+                      const el = ev.target as HTMLSelectElement;
+                      if (el.value) this._setActivity(id, { ...activity, devices: [...chosen, el.value] });
+                      el.value = "";
+                    }}
+                  >
+                    <option value="" selected>+ ${this._t("flow.add_device")}</option>
+                    ${free.map((d) => html`<option value=${d}>${this.room.devices?.[d]?.name ?? d}</option>`)}
+                  </select>`
+                : nothing}
+              ${chosen.length
+                ? html`<button
+                    class="ltek-add"
+                    @click=${() => {
+                      const checks = (activity.checks as Obj[] | undefined) ?? [];
+                      this._setActivity(id, { ...activity, checks: [...checks, { device: firstPictureDevice(chosen, checks) }] });
+                      open("checks|||||", "section_checks");
+                    }}
+                  >
+                    + ${this._t("flow.add_check")}
+                  </button>`
+                : nothing}
+              <select
+                class="ltek-add add-select"
+                aria-label=${this._t("flow.add_step")}
+                @change=${(ev: Event) => {
+                  const el = ev.target as HTMLSelectElement;
+                  if (el.value) {
+                    this._setActivity(id, { ...activity, steps: [...(activity.steps ?? []), newStep(el.value, activity, this.room)] });
+                    open("steps|||||", "steps");
+                  }
+                  el.value = "";
+                }}
+              >
+                <option value="" selected>+ ${this._t("flow.add_step")}</option>
+                ${STEP_TYPES.map((type) => html`<option value=${type}>${this._t(`step.${type}`)}</option>`)}
+              </select>`
+          : nothing}
+        ${hasHook
+          ? nothing
+          : html`<button class="ltek-add" @click=${() => (this._flowEditing = adding ? undefined : { key: `__${hook}`, panel: "section_advanced" })}>
+              + ${this._t(mode === "start" ? "flow.add_on_start" : "flow.add_on_stop")}
+            </button>`}
+      </div>
+      ${mode === "start" && !free.length && !chosen.length ? html`<p class="ltek-hint">${this._t("flow.no_more_devices")}</p>` : nothing}
+      ${adding && !hasHook ? html`<div class="inline-add">${this._renderHooks(id, activity, hook)}</div>` : nothing}`;
+  }
+
+  /** A Flow row's trash icon. Device settings change for every activity that uses the device. */
+  private _flowDelete(id: string, activity: Activity, detail: FlowDelete): void {
+    const { row, header, device: deviceId } = detail;
+    if (header === "steps" || (row.kind === "step" && row.step)) {
+      const index = Number(row.step) - 1;
+      this._setActivity(id, { ...activity, steps: (activity.steps ?? []).filter((_, i) => i !== index) });
+      return;
+    }
+    switch (row.kind) {
+      case "device":
+        if (deviceId) this._setActivity(id, withoutDevice(activity, deviceId));
+        return;
+      case "check": {
+        const index = Number(row.check) - 1;
+        const checks = ((activity.checks as Obj[] | undefined) ?? []).filter((_, i) => i !== index);
+        this._setActivity(id, { ...activity, checks: checks.length ? checks : undefined });
+        return;
+      }
+      case "hook":
+        this._setActivity(id, { ...activity, [String(row.hook)]: [] });
+        return;
+      case "delay":
+      case "wait_for": {
+        if (!deviceId) return;
+        const before = { ...(activity.before?.[deviceId] ?? {}) };
+        if (row.kind === "delay") delete before.delay;
+        else delete before.wait_for;
+        this._setActivity(id, withBefore(activity, deviceId, before));
+        return;
+      }
+    }
+    const device = deviceId ? this.room.devices?.[deviceId] : undefined;
+    if (!device || !deviceId) return;
+    const next: Device = { ...device };
+    if (row.kind === "status") next.wait_on = "none";
+    else if (row.kind === "wait") next.delay_after_on = 0;
+    else if (row.kind === "boot") next.delay_after_power = 0;
+    else if (row.kind === "ready") delete next.ready;
+    else return;
+    this._emit({ ...this.room, devices: { ...this.room.devices, [deviceId]: clean(next) } });
   }
 
   /** The line that starts the Remote control card's settings. */
@@ -1963,6 +2225,41 @@ export class EasyAvControlRoomEditor extends LitElement {
       margin-top: 32px;
     }
     /* Startup / Shutdown beside the activity's name */
+    .inline-bar {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 10px;
+    }
+    .inline-order {
+      display: flex;
+      justify-content: flex-end;
+    }
+    .inline-add {
+      margin-top: 10px;
+    }
+    [slot="edit"] h4 {
+      margin: 10px 0 4px;
+      font-size: var(--ltek-fs-group);
+      font-weight: 500;
+    }
+    .flow-add {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .flow-add .ltek-add {
+      width: auto;
+      margin: 0;
+    }
+    button.link {
+      background: none;
+      border: none;
+      padding: 0 0 0 4px;
+      color: var(--ltek-c-accent);
+      cursor: pointer;
+      font: inherit;
+    }
     .title-row {
       display: flex;
       align-items: center;
@@ -2142,4 +2439,19 @@ export class EasyAvControlRoomEditor extends LitElement {
 
 if (!customElements.get("easy-av-control-room-editor")) {
   customElements.define("easy-av-control-room-editor", EasyAvControlRoomEditor);
+}
+
+type FlowDelete = { row: { kind: string; [key: string]: unknown }; header?: string; device?: string; mode: string };
+
+/** A new action after start: a device step names the activity's first device, so it is valid at once. */
+function newStep(type: string, activity: Activity, room: Room): Step {
+  const deviceSteps = ["power_on", "power_off", "set_source", "set_volume", "set_sound_mode", "set_brightness", "set_color_temp", "set_position", "set_tilt"];
+  if (!deviceSteps.includes(type)) return { type };
+  const device = (activity.devices ?? [])[0] ?? Object.keys(room.devices ?? {})[0];
+  return device ? { type, device } : { type };
+}
+
+/** The device a new check is for: the first with a picture check and none yet, else the first. */
+function firstPictureDevice(chosen: string[], checks: Obj[]): string {
+  return chosen.find((d) => !checks.some((c) => c.device === d && !c.entity_id)) ?? chosen[0];
 }

@@ -43,7 +43,38 @@ const ICONS: Record<string, string> = {
   check: "mdi:image-check-outline",
   already_on: "mdi:check",
   step: "mdi:tune-variant",
+  delay: "mdi:timer-outline",
+  wait_for: "mdi:clock-check-outline",
 };
+
+/** A row's identity, for editing it in place. */
+export function rowKey(row: Row, header?: Row): string {
+  const device = row.device ?? (header?.kind === "device" ? header.device : undefined) ?? "";
+  return [row.kind, device, row.step ?? "", row.check ?? "", row.hook ?? "", row.reason ?? ""].join("|");
+}
+
+/** What the trash icon on a row removes (handled by the room editor): undefined for rows it can't. */
+function removable(row: Row, header: Row | undefined, mode: string): boolean {
+  if (row.background) return false;
+  if (header?.kind === "steps") return true;
+  switch (row.kind) {
+    case "device":
+      return mode === "start";
+    case "status":
+    case "boot":
+    case "ready":
+    case "delay":
+    case "wait_for":
+    case "check":
+    case "step":
+    case "hook":
+      return true;
+    case "wait":
+      return row.reason === "delay_after_on";
+    default:
+      return false;
+  }
+}
 
 /** Where each row's ✎ goes: the device's panel (key of its title text), for rows under a device. */
 const DEVICE_PANELS: Record<string, string> = {
@@ -55,6 +86,8 @@ const DEVICE_PANELS: Record<string, string> = {
   turn_on: "section_device",
   turn_off: "section_device",
   wait: "section_delays",
+  delay: "flow.before",
+  wait_for: "flow.before",
 };
 /** ... and the activity's panel for the rest. */
 const ACTIVITY_PANELS: Record<string, string> = {
@@ -83,6 +116,7 @@ export class EasyAvControlFlow extends LitElement {
     live: { attribute: false },
     from: { attribute: false },
     details: { type: Boolean },
+    editing: { attribute: false },
     _states: { state: true },
     _detailKinds: { state: true },
     _showDetails: { state: true },
@@ -109,6 +143,8 @@ export class EasyAvControlFlow extends LitElement {
   declare _detailKinds: string[];
   /** The panel's own Details chip */
   declare _showDetails: boolean;
+  /** In the panel: the key of the row being edited in place (its editor comes in through the "edit" slot) */
+  declare editing?: string;
   /** The furthest row this run has reached */
   private _reached = -1;
   private _statesTimer?: number;
@@ -276,6 +312,11 @@ export class EasyAvControlFlow extends LitElement {
     return `${Math.round(Number(value) * 10) / 10} s`;
   }
 
+  /** 300 -> "5 min", 90 -> "90 s". */
+  private _duration(seconds: number): string {
+    return seconds >= 120 && seconds % 60 === 0 ? `${seconds / 60} min` : this._seconds(seconds);
+  }
+
   private _time([min, max]: [number, number]): string {
     return min === max ? this._seconds(min) : `${this._seconds(min).slice(0, -2)}–${this._seconds(max)}`;
   }
@@ -328,6 +369,7 @@ export class EasyAvControlFlow extends LitElement {
         if (row.skip) {
           return prefix + this._t("flow.cannot_switch", { device });
         }
+        if (row.later) return prefix + this._t("flow.turn_off_later", { device, seconds: this._duration(Number(row.later)) });
         return prefix + this._t(row.reason === "unused" ? "flow.turn_off_unused" : `flow.${row.kind}`, { device });
       }
       case "status":
@@ -354,6 +396,19 @@ export class EasyAvControlFlow extends LitElement {
           states: ((row.states as string[] | undefined) ?? []).join(" / "),
           timeout: this._seconds(row.timeout),
         });
+      case "delay":
+        return this._t("flow.delay", { seconds: this._seconds(row.seconds) });
+      case "wait_for": {
+        const waits = (row.waits as { device: string; state: string }[] | undefined) ?? [];
+        const what = waits
+          .map((w) => this._t(w.state === "picture" ? "flow.wait_for_picture" : "flow.wait_for_on", { device: this._device(w.device) }))
+          .join(this._t("flow.and"));
+        return (
+          this._t("flow.wait_for", { what, timeout: this._seconds(row.timeout) }) +
+          " " +
+          this._t(`flow.on_timeout_${row.on_timeout}`)
+        );
+      }
       case "wait":
         return this._t(row.reason === "delay_after_on" ? "flow.wait_on" : "flow.wait", {
           seconds: this._seconds(row.seconds),
@@ -384,6 +439,7 @@ export class EasyAvControlFlow extends LitElement {
     const notes: string[] = [];
     if (typeof row.condition === "string") notes.push(this._t(`flow.if.${row.condition}`));
     if (row.kind === "ready" && row.reload) notes.push(this._t("flow.reload_if_needed"));
+    if (typeof row.option === "string") notes.push(this._t("flow.option", { option: row.option }));
     if (row.kind === "status" && Number(row.typical) > 0) {
       notes.push(this._t("flow.typical", { seconds: this._seconds(row.typical) }));
     }
@@ -428,6 +484,7 @@ export class EasyAvControlFlow extends LitElement {
 
   private _renderRow(row: Row, nested: boolean, showTime: boolean, group?: Row, status?: RowStatus): TemplateResult {
     const target = this.live ? undefined : this._target(row, group);
+    const key = rowKey(row, group);
     const notes = this._hides("notes") ? [] : this._notes(row);
     const call = this._hides("entities") ? undefined : this._call(row);
     const header = HEADERS.has(row.kind);
@@ -452,7 +509,11 @@ export class EasyAvControlFlow extends LitElement {
         <span class="what"
           >${row.kind === "device"
             ? html`${this._device(row.device)}${state?.value
-                ? html`<span class="state-chip r-${stateRole(state.group)}">${state.value}</span>`
+                ? html`<span class="state-chip r-${stateRole(state.group)}" title=${state.value}
+                    >${["on", "off", "starting", "stopping", "error"].includes(state.group)
+                      ? this._t(`flow.group.${state.group}`)
+                      : state.value}</span
+                  >`
                 : nothing}`
             : row.kind === "steps"
               ? this._t("flow.steps")
@@ -464,19 +525,39 @@ export class EasyAvControlFlow extends LitElement {
         ${call ? html`<span class="call">${call}</span>` : nothing}
         ${notes.length ? html`<span class="notes">${notes.map((n) => html`<span class="note">${n}</span>`)}</span>` : nothing}
       </span>
-      ${target
-        ? html`<button
-            class="ltek-act edit"
-            title=${this._t("flow.edit")}
-            aria-label=${this._t("flow.edit")}
-            @click=${() => this.dispatchEvent(new CustomEvent("flow-edit", { detail: target, bubbles: true, composed: true }))}
-          >
-            <ha-icon icon="mdi:pencil-outline"></ha-icon>
-          </button>`
-        : this.live
-          ? nothing
-          : html`<span></span>`}
-    </li>`;
+      ${this.live
+        ? nothing
+        : html`<span class="acts"
+            >${target
+              ? html`<button
+                  class="ltek-act edit ${this.editing === key ? "on" : ""}"
+                  title=${this._t("flow.edit")}
+                  aria-label=${this._t("flow.edit")}
+                  @click=${() =>
+                    this.dispatchEvent(new CustomEvent("flow-edit", { detail: { ...target, key }, bubbles: true, composed: true }))}
+                >
+                  <ha-icon icon="mdi:pencil-outline"></ha-icon>
+                </button>`
+              : nothing}${removable(row, group, this._mode)
+              ? html`<button
+                  class="ltek-del"
+                  title=${this._t("flow.delete")}
+                  aria-label=${this._t("flow.delete")}
+                  @click=${() =>
+                    this.dispatchEvent(
+                      new CustomEvent("flow-delete", {
+                        detail: { row, header: group?.kind, device: (row.device ?? group?.device) as string | undefined, mode: this._mode },
+                        bubbles: true,
+                        composed: true,
+                      }),
+                    )}
+                >
+                  <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+                </button>`
+              : nothing}</span
+          >`}
+    </li>
+    ${!this.live && this.editing === key ? html`<li class="inline"><slot name="edit"></slot></li>` : nothing}`;
   }
 
   private _renderRows(rows: Row[]): TemplateResult {
@@ -593,6 +674,7 @@ export class EasyAvControlFlow extends LitElement {
             seconds: this._seconds(Math.max(0, ...background)),
           });
     return html`${this._renderRows(flow.rows)}
+      ${this.live ? nothing : html`<div class="adder"><slot name=${`add-${this._mode}`}></slot></div>`}
       ${this._detailsOn ? html`<p class="summary">${summary}</p>` : nothing}`;
   }
 
@@ -641,7 +723,7 @@ export class EasyAvControlFlow extends LitElement {
     }
     ol.flow li {
       display: grid;
-      grid-template-columns: 64px 24px minmax(0, 1fr) 22px;
+      grid-template-columns: 64px 24px minmax(0, 1fr) auto;
       gap: 4px 10px;
       align-items: start;
       padding: 6px 0;
@@ -651,7 +733,7 @@ export class EasyAvControlFlow extends LitElement {
       border-top: none;
     }
     ol.flow li.nested {
-      grid-template-columns: 64px 40px minmax(0, 1fr) 22px;
+      grid-template-columns: 64px 40px minmax(0, 1fr) auto;
       border-top: none;
       padding-top: 2px;
     }
@@ -805,6 +887,35 @@ export class EasyAvControlFlow extends LitElement {
         transform: rotate(360deg);
       }
     }
+    .acts {
+      display: flex;
+      gap: 2px;
+      align-items: flex-start;
+    }
+    .acts .ltek-del {
+      --mdc-icon-size: 16px;
+      padding-top: 2px;
+      opacity: 0.45;
+    }
+    li:hover .acts .ltek-del {
+      opacity: 1;
+    }
+    button.edit.on {
+      opacity: 1;
+      color: var(--ltek-c-accent);
+    }
+    ol.flow li.inline {
+      display: block;
+      border-top: none;
+      margin: 4px 0 8px 74px;
+      padding: 10px 12px;
+      border-left: 3px solid var(--ltek-c-accent);
+      border-radius: 0 8px 8px 0;
+      background: var(--secondary-background-color);
+    }
+    .adder {
+      margin-top: 10px;
+    }
     button.edit {
       --mdc-icon-size: 16px;
       padding-top: 2px;
@@ -852,11 +963,11 @@ export class EasyAvControlFlow extends LitElement {
     }
     @media (max-width: 450px) {
       ol.flow li {
-        grid-template-columns: 58px 22px minmax(0, 1fr) 22px;
+        grid-template-columns: 58px 22px minmax(0, 1fr) auto;
         gap: 4px 6px;
       }
       ol.flow li.nested {
-        grid-template-columns: 58px 32px minmax(0, 1fr) 22px;
+        grid-template-columns: 58px 32px minmax(0, 1fr) auto;
       }
       .time {
         font-size: var(--ltek-fs-small);

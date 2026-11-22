@@ -93,6 +93,8 @@ INDICATOR_SCHEMA = vol.Schema(
         vol.Optional("entity"): MATCHER_SCHEMA,
         vol.Optional("attribute"): str,
         vol.Optional("available_is_on", default=False): bool,
+        # Any value but these means on (a Harmony hub's activity, anything but power_off)
+        vol.Optional("on_unless"): _STATES,
         **{vol.Optional(group, default=list): _STATES for group in STATE_GROUPS},
     }
 )

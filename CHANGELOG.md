@@ -1,5 +1,31 @@
 # Changelog
 
+## v2026.11.22.19
+
+**Changed**
+- **The Flow is the activity's editor**, at the top of its page. ✎ on a line opens its settings in place under it:
+  a device's order, what it waits for before it is turned on, and its own settings; the checks; the actions after
+  start; the actions on start and stop. The trash icon removes a line: a device from the activity, a wait, a check,
+  an action. **+** under the Flow adds a device, a check or an action. The separate Devices, Checks and Actions
+  after start panels are gone, and the actions on start and stop moved out of Advanced.
+- A device's state chip in the Flow says what the state means (on, off, starting …); its raw value is the tooltip.
+  A Lumagen in standby showed "unavailable", which is its sensor's normal state then.
+
+**Added**
+- **Before turning it on**, per device of an activity: a delay, then other devices of the activity to wait for,
+  all at once, until they are on or show a picture; with a timeout and what to do then (go on or stop).
+- **No wait** for a device (`wait_on: none`, or the trash icon on its wait in the Flow): it is turned on and the
+  next one follows at once, so devices boot together. Its time is still measured for Reports.
+- **Turn off after** a shutdown (`turn_off_after`): the device goes off that long after the shutdown, in the
+  background. For seats or lights; a new startup within that time keeps it on.
+- **Logitech Harmony Hub** profile: its Activities select is a device. Startup selects its activity (`option`,
+  without one the hub's first), Shutdown selects `power_off` (`off_option`).
+
+**Fixed**
+- An action after start added in the panel had no device until one was picked, so the configuration was invalid
+  and the Flow showed nothing. It now starts with the activity's first device.
+- Renaming a device now also renames it in the activity's checks.
+
 ## v2026.11.22.18
 
 **Fixed**

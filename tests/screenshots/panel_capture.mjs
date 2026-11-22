@@ -164,13 +164,19 @@ await settle(800);
 await page.getByRole('button', { name: /^TV/ }).first().click();
 await settle(3000);
 await shotBoth('activity');
-// Its devices as an ordered list
-await page.locator('easy-av-control-room-editor summary', { hasText: /Devices/ }).click();
-await settle(800);
-await shotBoth('activity-devices');
-await page.locator('easy-av-control-room-editor summary', { hasText: 'Checks' }).click();
-await settle(1200);
+// The Flow is the editor: ✎ on a device opens its order, Before and settings in place
+await page.locator('easy-av-control-flow li.device button.edit').nth(2).click();
+await settle(1500);
+await page.locator('easy-av-control-flow li.inline').scrollIntoViewIfNeeded();
+await shotBoth('activity-flow-edit-device');
+await page.locator('easy-av-control-flow li.checks button.edit').first().click();
+await settle(1500);
+await page.locator('easy-av-control-flow li.inline').scrollIntoViewIfNeeded();
 await shotBoth('activity-checks');
+await page.locator('easy-av-control-room-editor .inline-bar button').first().click();
+await settle(800);
+await page.locator('easy-av-control-flow .adder').scrollIntoViewIfNeeded();
+await shotBoth('activity-flow-add');
 await page.locator('easy-av-control-room-editor summary', { hasText: 'Remote control preview' }).click();
 await settle(2500);
 await page.locator('easy-av-control-remote-preview').scrollIntoViewIfNeeded();

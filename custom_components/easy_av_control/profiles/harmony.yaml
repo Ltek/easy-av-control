@@ -1,0 +1,15 @@
+# Logitech Harmony Hub, Home Assistant's own harmony integration.
+# The device is the hub's Activities select: Startup selects the device's activity (its "option"; without one,
+# the hub's first activity), Shutdown selects power_off, which also turns off the devices in that activity.
+# Its remote entity sends buttons to the hub's devices.
+id: harmony
+name: Logitech Harmony Hub
+integration: harmony
+device_entity: {domain: select, translation_key: activities}
+indicator:
+  on_unless: [power_off]
+remote: {domain: remote}
+timeouts: {"on": 60, "off": 60}
+debounce: 1
+order: early
+roles: {power: 1, navigation: 5, turn_off: 1}

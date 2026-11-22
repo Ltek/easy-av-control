@@ -50,7 +50,7 @@ export interface Timing {
   suggested: number | null;
 }
 
-export const WAIT_MODES = ["status", "time", "both"] as const;
+export const WAIT_MODES = ["status", "time", "both", "none"] as const;
 export const FAILURES = ["warn", "stop", "retry"] as const;
 
 /** The device keys the Device state form writes (everything else on the device is left alone). */

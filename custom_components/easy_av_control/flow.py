@@ -21,7 +21,9 @@ from homeassistant.core import HomeAssistant
 
 from .const import (
     CONF_ACTIVITIES,
+    CONF_BEFORE,
     CONF_CHECKS,
+    CONF_DELAY,
     CONF_DELAY_AFTER_OFF,
     CONF_DELAY_AFTER_ON,
     CONF_DELAY_AFTER_POWER,
@@ -29,16 +31,22 @@ from .const import (
     CONF_DEVICES,
     CONF_ENTITY_ID,
     CONF_NAME,
+    CONF_OFF_OPTION,
     CONF_ON_START,
     CONF_ON_STOP,
     CONF_ON_TIMEOUT,
+    CONF_OPTION,
     CONF_POWER_SWITCH,
     CONF_READY,
     CONF_RELOAD_INTEGRATION,
     CONF_STATE,
     CONF_STEPS,
     CONF_TIMEOUT,
+    CONF_TURN_OFF_AFTER,
     CONF_TYPE,
+    CONF_WAIT_FOR,
+    DEFAULT_BEFORE_TIMEOUT,
+    DEFAULT_OFF_OPTION,
     STEP_TYPE_DELAY,
     STEP_TYPE_POWER_OFF,
     STEP_TYPE_POWER_ON,
@@ -69,6 +77,8 @@ def _off_delay(hass: HomeAssistant, device: dict[str, Any]) -> tuple[float, floa
     """Before the outlet is cut: (fixed time, the longest status wait, its measured typical time).
     Status: no fixed time."""
     source, _, mode = _status(hass, device)
+    if mode == "none":
+        return 0.0, 0.0, 0.0
     if source is None or mode == "time":
         return device[CONF_DELAY_AFTER_OFF], 0.0, 0.0
     usual = min(typical_of(hass, device[CONF_ENTITY_ID], "off") or 0.0, source.timeout_off)
@@ -121,12 +131,34 @@ def _action(domain_service: tuple[str, str]) -> str:
     return ".".join(domain_service)
 
 
+def _select_option(hass: HomeAssistant, device: dict[str, Any], entity_id: str, *, on: bool) -> str | None:
+    """The option a select device (Harmony activities) is set to, as the engine picks it."""
+    off = device.get(CONF_OFF_OPTION) or DEFAULT_OFF_OPTION
+    if not on:
+        return off
+    if device.get(CONF_OPTION):
+        return device[CONF_OPTION]
+    state = hass.states.get(entity_id)
+    options = [o for o in (state.attributes.get("options") or []) if o != off] if state else []
+    return options[0] if options else None
+
+
 def _switch_row(
-    hass: HomeAssistant, kind: str, device_id: str, entity_id: str, at: list[float], **extra: Any
+    hass: HomeAssistant,
+    kind: str,
+    device_id: str,
+    entity_id: str,
+    at: list[float],
+    room_device: dict[str, Any] | None = None,
+    **extra: Any,
 ) -> dict[str, Any]:
     on = kind == "turn_on"
     row: dict[str, Any] = {"kind": kind, "at": at, "device": device_id, "entity_id": entity_id}
-    if can_switch(hass, entity_id, on=on):
+    if entity_id.startswith(("select.", "input_select.")):
+        row["action"] = f"{entity_id.split('.')[0]}.select_option"
+        if option := _select_option(hass, room_device or {}, entity_id, on=on):
+            row["option"] = option
+    elif can_switch(hass, entity_id, on=on):
         row["action"] = _action(power_service(entity_id, on=on))
     else:
         row["skip"] = "cannot_switch"
@@ -187,7 +219,7 @@ def plan_start(
         device = devices[device_id]
         rows.append(
             _switch_row(
-                hass, "turn_off", device_id, device[CONF_ENTITY_ID], clock.at, reason="unused"
+                hass, "turn_off", device_id, device[CONF_ENTITY_ID], clock.at, device, reason="unused"
             )
         )
         if switch := device.get(CONF_POWER_SWITCH):
@@ -225,6 +257,24 @@ def plan_start(
         if device_id in old_devices:
             rows.append({"kind": "already_on", "at": clock.at, "device": device_id, "previous": previous})
             continue
+        if before := (activity.get(CONF_BEFORE) or {}).get(device_id):
+            if before.get(CONF_DELAY):
+                rows.append(
+                    {"kind": "delay", "at": clock.at, "device": device_id, "seconds": before[CONF_DELAY]}
+                )
+                clock.wait(before[CONF_DELAY])
+            if waits := before.get(CONF_WAIT_FOR):
+                rows.append(
+                    {
+                        "kind": "wait_for",
+                        "at": clock.at,
+                        "device": device_id,
+                        "waits": [{"device": w[CONF_DEVICE], "state": w.get(CONF_STATE, "on")} for w in waits],
+                        "timeout": before.get(CONF_TIMEOUT, DEFAULT_BEFORE_TIMEOUT),
+                        "on_timeout": before.get(CONF_ON_TIMEOUT, "continue"),
+                    }
+                )
+                clock.wait_up_to(before.get(CONF_TIMEOUT, DEFAULT_BEFORE_TIMEOUT))
         fresh_power = device.get(CONF_POWER_SWITCH) in powered
         condition = None if previous else "outlet_was_off"
         if fresh_power and device[CONF_DELAY_AFTER_POWER]:
@@ -250,10 +300,10 @@ def plan_start(
                 reload = ready[CONF_RELOAD_INTEGRATION]
             rows.append(_ready_row(entity_id, ready, clock.at, device=device_id, reload=reload))
             clock.wait_up_to(ready[CONF_TIMEOUT])
-        rows.append(_switch_row(hass, "turn_on", device_id, entity_id, clock.at, condition="if_off"))
+        rows.append(_switch_row(hass, "turn_on", device_id, entity_id, clock.at, device, condition="if_off"))
         source, mode_on, _ = _status(hass, device)
         usual = min(typical_of(hass, entity_id, "on") or 0.0, source.timeout_on) if source else 0.0
-        if source is not None and mode_on != "time":
+        if source is not None and mode_on not in ("time", "none"):
             rows.append(
                 {
                     "kind": "status",
@@ -269,7 +319,7 @@ def plan_start(
             # The measured typical time counts as the earliest; the timeout as the latest
             clock.wait(usual)
             clock.wait_up_to(source.timeout_on - usual)
-        if device[CONF_DELAY_AFTER_ON] and mode_on != "status":
+        if device[CONF_DELAY_AFTER_ON] and mode_on not in ("status", "none"):
             rows.append(
                 {
                     "kind": "wait",
@@ -432,19 +482,31 @@ def plan_stop(
     status_wait: dict[str, float] = {}
     for device_id in reversed(device_ids):
         device = devices[device_id]
-        rows.append(
-            _switch_row(
-                hass,
-                "turn_off",
-                device_id,
-                device[CONF_ENTITY_ID],
-                clock.at,
-                condition="if_on",
-                cooldown=_off_delay(hass, device)[0],
+        later = device.get(CONF_TURN_OFF_AFTER) or 0
+        if later:
+            # Off in the background, a while after the shutdown (seats)
+            rows.append(
+                _switch_row(
+                    hass, "turn_off", device_id, device[CONF_ENTITY_ID], [later, later], device,
+                    background=True, later=later,
+                )
             )
-        )
+        else:
+            rows.append(
+                _switch_row(
+                    hass,
+                    "turn_off",
+                    device_id,
+                    device[CONF_ENTITY_ID],
+                    clock.at,
+                    device,
+                    condition="if_on",
+                    cooldown=_off_delay(hass, device)[0],
+                )
+            )
         if switch := device.get(CONF_POWER_SWITCH):
             delay, status, usual = _off_delay(hass, device)
+            delay += later
             cooldown[switch] = max(cooldown.get(switch, 0.0), delay + usual)
             status_wait[switch] = max(status_wait.get(switch, 0.0), status - usual)
 

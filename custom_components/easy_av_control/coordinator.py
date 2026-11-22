@@ -105,12 +105,14 @@ from .const import (
     CONF_ACTIVITIES,
     CONF_AREA_ID,
     CONF_ATTRIBUTE,
+    CONF_BEFORE,
     CONF_BRIGHTNESS_PCT,
     CONF_CHECKS,
     CONF_COLOR_TEMP_KELVIN,
     CONF_COMMANDS,
     CONF_DATA,
     CONF_DEFAULT_ACTIVITY,
+    CONF_DELAY,
     CONF_DELAY_AFTER_OFF,
     CONF_DELAY_AFTER_ON,
     CONF_DELAY_AFTER_POWER,
@@ -118,9 +120,11 @@ from .const import (
     CONF_DEVICES,
     CONF_ENTITY_ID,
     CONF_NAME,
+    CONF_OFF_OPTION,
     CONF_ON_START,
     CONF_ON_STOP,
     CONF_ON_TIMEOUT,
+    CONF_OPTION,
     CONF_POSITION,
     CONF_POWER_SWITCH,
     CONF_READY,
@@ -135,8 +139,12 @@ from .const import (
     CONF_TILT_POSITION,
     CONF_TIMEOUT,
     CONF_TRANSITION,
+    CONF_TURN_OFF_AFTER,
     CONF_TYPE,
     CONF_VOLUME_LEVEL,
+    CONF_WAIT_FOR,
+    DEFAULT_BEFORE_TIMEOUT,
+    DEFAULT_OFF_OPTION,
     DEFAULT_SERVICE_TIMEOUT,
     DEVICE_NAME_PREFIX,
     DOMAIN,
@@ -157,6 +165,9 @@ from .const import (
     STEP_TYPE_SET_VOLUME,
     STEP_TYPE_WAIT_AVAILABLE,
     STEP_TYPE_WAIT_PICTURE,
+    WAIT_FOR_ON,
+    WAIT_FOR_PICTURE,
+    WAIT_NONE,
     WAIT_STATUS,
     WAIT_TIME,
 )
@@ -1052,6 +1063,9 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         needed_switches = power_switches(devices, new_devices)
         for switch in needed_switches:
             self._cancel_cut(rt, switch)
+        for device_id in new_devices:
+            # A device turned off later by the last shutdown (seats) stays on
+            self._cancel_cut(rt, devices[device_id][CONF_ENTITY_ID])
 
         hook: asyncio.Task | None = None
         try:
@@ -1080,6 +1094,8 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 _current_device.set(device_id)
                 device = devices[device_id]
                 run.phase("device", device=device_id, entity_id=device[CONF_ENTITY_ID], name=self._device_name(device))
+                if before := (activity.get(CONF_BEFORE) or {}).get(device_id):
+                    await self._async_before(rt, devices, device, before)
                 if device.get(CONF_POWER_SWITCH) in powered and device[CONF_DELAY_AFTER_POWER]:
                     # Devices on the same switch boot in parallel
                     remaining = device[CONF_DELAY_AFTER_POWER] - (self._now() - powered_at)
@@ -1216,11 +1232,16 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         for device_id in unused:
             _current_device.set(device_id)
             device = devices[device_id]
-            self._doing(rt, "turn_off", name=self._device_name(device))
-            await self._async_power_off(device[CONF_ENTITY_ID], context)
+            later = device.get(CONF_TURN_OFF_AFTER) or 0
+            if later:
+                self._schedule_cut(rt, room_id, device[CONF_ENTITY_ID], later, [self._device_name(device)])
+            else:
+                self._doing(rt, "turn_off", name=self._device_name(device))
+                await self._async_power_off(device[CONF_ENTITY_ID], context)
             switch = device.get(CONF_POWER_SWITCH)
             if switch:
                 delay, source = self._off_wait(device, was_off=False)
+                delay += later
                 cooldown[switch] = max(cooldown.get(switch, 0), delay)
                 if source is not None:
                     waits.setdefault(switch, []).append((device, source))
@@ -1365,6 +1386,61 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         return await async_wait_for(self.hass, source, target, timeout, on_change=shown)
 
+    async def _async_before(
+        self, rt: RoomRuntime, devices: dict[str, Any], device: dict[str, Any], before: dict[str, Any]
+    ) -> None:
+        """Before a device is turned on: its delay, then the devices it waits for, all at once.
+
+        A device waited for "on" by its state source (without one: it is not off); "picture" by its picture
+        check. Whatever is not right within the timeout warns, or with on_timeout abort stops the start.
+        """
+        name = self._device_name(device)
+        if before.get(CONF_DELAY):
+            self._doing(rt, "delay", name=name, seconds=before[CONF_DELAY])
+            await self._async_sleep(before[CONF_DELAY])
+        waits = before.get(CONF_WAIT_FOR) or []
+        if not waits:
+            return
+        timeout = before.get(CONF_TIMEOUT, DEFAULT_BEFORE_TIMEOUT)
+        self._doing(rt, "before", name=name, names=", ".join(self._device_name(devices[w[CONF_DEVICE]]) for w in waits))
+
+        async def one(wait: dict[str, Any]) -> str | None:
+            other = devices[wait[CONF_DEVICE]]
+            what = wait.get(CONF_STATE, WAIT_FOR_ON)
+            if what == WAIT_FOR_PICTURE:
+                found = check_source(self.hass, self.profiles, other, {CONF_DEVICE: wait[CONF_DEVICE]})
+                source = found[0] if found else None
+            else:
+                source = self.state_source(other)
+            if source is None:
+                if what == WAIT_FOR_ON and not self._is_off(other[CONF_ENTITY_ID]):
+                    return None
+                return f"{self._device_name(other)} has no {'picture check' if what == WAIT_FOR_PICTURE else 'status'}"
+            result, value = await self._async_wait_state(None, other, source, GROUP_ON, timeout)
+            if result == RESULT_OK:
+                return None
+            shown = f", it shows {value}" if value else ""
+            return (
+                f"{self._device_name(other)} {'has no picture' if what == WAIT_FOR_PICTURE else 'is not on'}"
+                f" after {timeout:g} s{shown}"
+            )
+
+        problems = [p for p in await asyncio.gather(*(one(w) for w in waits)) if p]
+        if not problems:
+            return
+        message = f"before {name}: {'; '.join(problems)}"
+        if before.get(CONF_ON_TIMEOUT) == ON_TIMEOUT_ABORT:
+            raise ActivityAborted(message)
+        self._warn(message)
+
+    async def _async_record_on_later(self, device: dict[str, Any], source: StateSource, started: float) -> None:
+        """A device nobody waits for: measure its time anyway, for Reports. Never warns."""
+        result, value = await async_wait_for(self.hass, source, GROUP_ON, source.timeout_on)
+        if result == RESULT_OK:
+            self._record_time(device, "on", self.hass.loop.time() - started)
+        else:
+            self._record_event(device, "on", self.hass.loop.time() - started, result, value)
+
     async def _async_bring_up(self, rt: RoomRuntime, device: dict[str, Any], context: Context) -> None:
         """Turn a device on unless it is on (or coming on), then wait for it as its wait mode says.
 
@@ -1399,6 +1475,12 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 await self._async_power_on(
                     entity_id, context, (device.get(CONF_READY) or {}).get(CONF_TIMEOUT, REACH_TIMEOUT)
                 )
+            if source is not None and mode == WAIT_NONE:
+                if turn_on:
+                    self.hass.async_create_background_task(
+                        self._async_record_on_later(device, source, started), f"{DOMAIN} time {entity_id}"
+                    )
+                break
             if source is not None and mode != WAIT_TIME:
                 result, value = await self._async_wait_state(rt, device, source, GROUP_ON, source.timeout_on)
                 if result == RESULT_OK and turn_on and not retried:
@@ -1417,7 +1499,7 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self._warn(message)
             break
 
-        if turn_on and mode != WAIT_STATUS and device[CONF_DELAY_AFTER_ON]:
+        if turn_on and mode not in (WAIT_STATUS, WAIT_NONE) and device[CONF_DELAY_AFTER_ON]:
             self._doing(rt, "warm_up", name=name, seconds=device[CONF_DELAY_AFTER_ON])
             await self._async_sleep(device[CONF_DELAY_AFTER_ON])
 
@@ -1480,6 +1562,8 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         mode = wait_mode(device, source, on=False)
         if was_off:
             delay = self._remaining_cooldown(entity_id, delay)
+        if mode == WAIT_NONE:
+            return 0.0, None
         if source is None or mode == WAIT_TIME:
             return delay, None
         wait = None if source.current(self.hass)[0] == GROUP_OFF and was_off else source
@@ -1633,11 +1717,16 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     run.phase("device", device=device_id, entity_id=device[CONF_ENTITY_ID], name=self._device_name(device))
                     entity_id = device[CONF_ENTITY_ID]
                     was_off = self._is_off(entity_id)
-                    if not was_off:
+                    later = device.get(CONF_TURN_OFF_AFTER) or 0
+                    if not was_off and later:
+                        # Seats: off in the background, a while after the shutdown
+                        self._schedule_cut(rt, room_id, entity_id, later, [self._device_name(device)])
+                    elif not was_off:
                         self._doing(rt, "turn_off", name=self._device_name(device))
                         await self._async_power_off(entity_id, context)
                     if switch := device.get(CONF_POWER_SWITCH):
                         delay, source = self._off_wait(device, was_off=was_off)
+                        delay += 0 if was_off else later
                         cooldown[switch] = max(cooldown.get(switch, 0.0), delay)
                         if source is not None:
                             waits.setdefault(switch, []).append((device, source))
@@ -1917,6 +2006,8 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def _is_off(self, entity_id: str) -> bool:
         state = self.hass.states.get(entity_id)
+        if state is not None and (off := self._select_option(entity_id, on=False)) is not None:
+            return state.state in (off, STATE_UNAVAILABLE, STATE_UNKNOWN)
         return state is None or state.state in _OFF_STATES
 
     def _platform_of(self, entity_id: str) -> str | None:
@@ -1978,13 +2069,49 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not await self._async_wait_reachable(entity_id, timeout):
             self._warn(f"turn on: {entity_id} was not reachable for {timeout:g} s, it was not switched on")
             return
+        if (option := self._select_option(entity_id, on=True)) is not None:
+            await self._async_call(
+                entity_id.split(".")[0], "select_option", {ATTR_ENTITY_ID: entity_id, "option": option}, context, "turn on"
+            )
+            return
         domain, service = power_service(entity_id, on=True)
         await self._async_call(domain, service, {ATTR_ENTITY_ID: entity_id}, context, "turn on")
+
+    def _select_device(self, entity_id: str) -> dict[str, Any]:
+        """The device of a room with this entity, for its select options."""
+        for room in self.rooms.values():
+            for device in room[CONF_DEVICES].values():
+                if device[CONF_ENTITY_ID] == entity_id:
+                    return device
+        return {}
+
+    def _select_option(self, entity_id: str, *, on: bool) -> str | None:
+        """For a select device (Harmony activities): the option that turns it on or off; None for others.
+
+        On: the device's ``option``, else the first option that is not the off one. Off: ``off_option``,
+        else power_off.
+        """
+        if not entity_id.startswith(("select.", "input_select.")):
+            return None
+        device = self._select_device(entity_id)
+        off = device.get(CONF_OFF_OPTION) or DEFAULT_OFF_OPTION
+        if not on:
+            return off
+        if device.get(CONF_OPTION):
+            return device[CONF_OPTION]
+        state = self.hass.states.get(entity_id)
+        options = [o for o in (state.attributes.get("options") or []) if o != off] if state else []
+        return options[0] if options else None
 
     async def _async_power_off(self, entity_id: str, context: Context) -> None:
         self._off_started[entity_id] = self.hass.loop.time()
         if not can_switch(self.hass, entity_id, on=False):
             _LOGGER.debug("%s cannot be switched off, skipping", entity_id)
+            return
+        if (option := self._select_option(entity_id, on=False)) is not None:
+            await self._async_call(
+                entity_id.split(".")[0], "select_option", {ATTR_ENTITY_ID: entity_id, "option": option}, context, "turn off"
+            )
             return
         domain, service = power_service(entity_id, on=False)
         await self._async_call(domain, service, {ATTR_ENTITY_ID: entity_id}, context, "turn off")

@@ -84,7 +84,22 @@ STATE_SOURCE_NONE: Final = "none"
 WAIT_STATUS: Final = "status"
 WAIT_TIME: Final = "time"
 WAIT_BOTH: Final = "both"
-WAIT_MODES: Final = [WAIT_STATUS, WAIT_TIME, WAIT_BOTH]
+# No wait: turn it on and go on at once (its time is still measured in the background)
+WAIT_NONE: Final = "none"
+WAIT_MODES: Final = [WAIT_STATUS, WAIT_TIME, WAIT_BOTH, WAIT_NONE]
+# A select device (Harmony activities): the option that turns it on, and the one that turns it off
+CONF_OPTION: Final = "option"
+CONF_OFF_OPTION: Final = "off_option"
+DEFAULT_OFF_OPTION: Final = "power_off"
+# At shutdown, turn the device off this long after the shutdown, in the background (seats)
+CONF_TURN_OFF_AFTER: Final = "turn_off_after"
+# Per activity, per device: what to wait for before it is turned on
+CONF_BEFORE: Final = "before"
+CONF_DELAY: Final = "delay"
+CONF_WAIT_FOR: Final = "wait_for"
+WAIT_FOR_ON: Final = "on"
+WAIT_FOR_PICTURE: Final = "picture"
+DEFAULT_BEFORE_TIMEOUT: Final = 90
 FAILURE_WARN: Final = "warn"
 FAILURE_STOP: Final = "stop"
 FAILURE_RETRY: Final = "retry"

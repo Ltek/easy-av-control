@@ -42,6 +42,9 @@ activities:
     icon: mdi:television-classic
     order: 1
     devices: [receiver, projector, sat]
+    # The satellite receiver waits 3 s, then for the receiver to be on
+    before:
+      sat: {delay: 3, wait_for: [{device: receiver}]}
     # The projector must show its input before the activity counts as running
     checks:
       - {device: projector, entity_id: media_player.projector, state: ["on"], timeout: 30}

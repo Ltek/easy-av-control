@@ -21,7 +21,20 @@ export interface Device extends Obj {
   delay_after_power?: number;
   delay_after_on?: number;
   delay_after_off?: number;
+  /** At shutdown, off this long after it, in the background (seats) */
+  turn_off_after?: number;
+  /** A select device (Harmony activities): the option for on, and for off */
+  option?: string;
+  off_option?: string;
   commands?: Obj;
+}
+
+/** Before a device is turned on: a delay, then other devices of the activity to be on or show a picture. */
+export interface Before extends Obj {
+  delay?: number;
+  wait_for?: { device: string; state?: "on" | "picture" }[];
+  timeout?: number;
+  on_timeout?: "continue" | "abort";
 }
 
 export interface Step extends Obj {
@@ -35,6 +48,8 @@ export interface Activity extends Obj {
   order?: number;
   devices?: string[];
   steps?: Step[];
+  checks?: Obj[];
+  before?: Record<string, Before>;
   on_start?: unknown[];
   on_stop?: unknown[];
   remote?: Obj;
@@ -333,10 +348,20 @@ export function renameDevice(room: Room, from: string, to: string): Room {
         );
       }
     }
+    const before = a.before
+      ? Object.fromEntries(
+          Object.entries(a.before).map(([d, b]) => [
+            swap(d) as string,
+            b.wait_for ? { ...b, wait_for: b.wait_for.map((w) => ({ ...w, device: swap(w.device) as string })) } : b,
+          ]),
+        )
+      : undefined;
     activities[id] = clean({
       ...a,
       devices: a.devices?.map((d) => swap(d) as string),
       steps: a.steps?.map((s) => (s.device === from ? { ...s, device: to } : s)),
+      checks: a.checks?.map((c) => (c.device === from ? { ...c, device: to } : c)),
+      before,
       remote,
     });
   }
@@ -374,4 +399,29 @@ export function byIntegration(hass: HomeAssistant, room: Room, settings: Obj[]):
     columns.set(platform, [...(columns.get(platform) ?? []), setting]);
   }
   return [...columns.entries()];
+}
+
+/** An activity without one of its devices: out of its order, and nothing waits for it or before it any more. */
+export function withoutDevice(activity: Activity, deviceId: string): Activity {
+  const before: Record<string, Before> = {};
+  for (const [d, b] of Object.entries(activity.before ?? {})) {
+    if (d === deviceId) continue;
+    const waits = (b.wait_for ?? []).filter((w) => w.device !== deviceId);
+    const next = clean({ ...b, wait_for: waits.length ? waits : undefined }) as Before;
+    if (Object.keys(next).some((k) => k === "delay" || k === "wait_for")) before[d] = next;
+  }
+  return clean({
+    ...activity,
+    devices: (activity.devices ?? []).filter((d) => d !== deviceId),
+    before: Object.keys(before).length ? before : undefined,
+  }) as Activity;
+}
+
+/** An activity with one device's Before set; an empty one is removed. */
+export function withBefore(activity: Activity, deviceId: string, before: Before | undefined): Activity {
+  const all = { ...(activity.before ?? {}) };
+  const next = before ? (clean({ ...before, wait_for: before.wait_for?.length ? before.wait_for : undefined }) as Before) : undefined;
+  if (next && (next.delay || next.wait_for?.length)) all[deviceId] = next;
+  else delete all[deviceId];
+  return clean({ ...activity, before: Object.keys(all).length ? all : undefined }) as Activity;
 }

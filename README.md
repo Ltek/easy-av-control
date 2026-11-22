@@ -128,6 +128,8 @@ The concepts carry over almost one to one:
 | Help button for devices out of sync | Not needed: devices report their real state through their Home Assistant integrations, and a device that is already on is not toggled |
 | Harmony remote | The card in the browser and the Home Assistant app, wall buttons through `toggle_activity` and `send_command` |
 
+A Harmony Hub itself can be a device: add its **Activities** select (`select.harmony_hub_activities`, found by Detect integrations). Startup selects its activity, so the Harmony remote works with the devices in it; Shutdown selects `power_off`, which also turns off the devices in that Harmony activity.
+
 Devices that only understand infrared keep working through any Home Assistant integration that sends IR codes, such as a Harmony Hub or a Broadlink: an own command calls `remote.send_command` on it (see [Own commands and buttons](#own-commands-and-buttons)):
 
 ```yaml
@@ -193,8 +195,8 @@ Assistant. The built remote control card and panel are included.
 The panel edits everything the [configuration](#configuration) below describes:
 
 - **Devices** — entity and power outlet with Home Assistant's entity picker; boot time, wait times and readiness check as fields; own `commands` in a YAML field. Renaming a device ID updates every reference; a device that an activity still uses cannot be deleted.
-- **Activities** — name, icon, position, devices in power-on order, steps (source and sound mode lists come from the device), remote button routing, and `on_start` / `on_stop` in Home Assistant's action editor, the same as in automations. The activity ID is part of the entity IDs and cannot be changed.
-- **Flow** — on every activity's page: what a start, a switch from another activity or a stop does with this configuration, step by step: which outlets and devices are switched with which action, boot times, readiness checks with their timeout and what happens on a timeout, steps, the actions on start and stop, outlets cut in the background, and the earliest and latest time of each row. It follows every change before it is saved; see also [ACTIVITY_FLOW.md](ACTIVITY_FLOW.md).
+- **Activities** — name, icon, position, remote button routing; everything a startup and a shutdown do is edited in the activity's Flow. The activity ID is part of the entity IDs and cannot be changed.
+- **Flow** — the activity's editor, at the top of its page. ✎ on a line opens its settings right under it: a device's order, what it waits for before it is turned on, and its own settings; the checks; the actions after start; the actions on start and stop (Home Assistant's action editor, the same as in automations). The trash icon removes a line: a device from the activity, a wait, a check, an action. **+** under the Flow adds a device, a check or an action. A device's settings belong to the device, so changing them changes every activity that uses it. The Flow shows what a start, a switch from another activity or a stop does with this configuration, step by step: which outlets and devices are switched with which action, boot times, readiness checks with their timeout and what happens on a timeout, steps, the actions on start and stop, outlets cut in the background, and the earliest and latest time of each row. It follows every change before it is saved; see also [ACTIVITY_FLOW.md](ACTIVITY_FLOW.md).
 - **Remote control preview** — on every activity's page: the card as it looks while the activity runs, following the button routing, quick select and extra buttons as you change them. Tapping a button sends nothing but shows which device gets it and what runs there (e.g. `remote.send_command "select"` on the Apple TV's remote). Buttons that would do nothing are listed, and every button group shows its device, whether it was chosen or automatic, and why it is missing.
 - **YAML** — the whole room as YAML, for anything the forms do not cover.
 
@@ -274,8 +276,10 @@ activities:
 | `delay_after_power` | `0` | Boot time: seconds the device needs after its `power_switch` came on before it accepts commands. Counted from switching the outlet on, so devices on the same outlet boot in parallel. Skipped when the outlet was already on. Use it for devices that report `off` instead of `unavailable` while they have no power — the readiness check cannot tell those states apart |
 | `delay_after_on` | `0` | Seconds to wait after switching the device on (wait mode *time* or *both*). Skipped when the device was already on |
 | `delay_after_off` | `0` | Seconds the device needs after switching off before its power is cut (cool-down, wait mode *time* or *both*); the room does not wait for it |
+| `turn_off_after` | — | At shutdown, turn the device off this many seconds after the shutdown, in the background, e.g. seats or lights that stay on while you leave. A new startup within that time keeps it on |
+| `option` / `off_option` | first activity / `power_off` | For a `select` device such as a Harmony hub's activities: the option Startup selects, and the one Shutdown selects |
 | `state_source` | automatic | What says the device is on, see [Device states](#device-states) |
-| `wait_on` / `wait_off` | `status` with a state source, else `time` | How to wait after turning on, and before cutting the outlet after turning off: `status`, `time` or `both` |
+| `wait_on` / `wait_off` | `status` with a state source, else `time` | How to wait after turning on, and before cutting the outlet after turning off: `status`, `time`, `both` or `none` (go on at once; its time is still measured for Reports) |
 | `timeout_on` / `timeout_off` | from the profile (120 / 300 s) | How long to wait for the state |
 | `debounce` | from the profile (2 s) | Seconds a state must hold before it counts |
 | `on_failure` | `warn` | When the state doesn't come in time, or the device reports an error: `warn` (go on), `stop` (stop the activity; when turning off: leave the outlet on) or `retry` (switch it once more, then warn). One value, or `{turn_on: …, turn_off: …}` |
@@ -403,11 +407,31 @@ hook) follows the room's sensor instead of waiting minutes for the select. The `
 | `icon` | Icon in the remote control card, e.g. `mdi:television` |
 | `order` | Position in lists; without it, activities are sorted by name. Home Assistant stores the configuration with sorted keys, so the order in which you write activities is not kept |
 | `devices` | Devices the activity uses, in power-on order |
+| `before` | Per device, what to wait for before it is turned on, see below |
+| `checks` | What must be right once the devices are on (a picture on the projector) |
 | `steps` | Settings applied once the devices are up |
 | `on_start` | Home Assistant actions, run alongside the start |
 | `on_stop` | Home Assistant actions, run alongside a stop |
 | `remote` | Which device gets which remote buttons, and extra buttons, see [Remote control](#remote-control) |
 | `commands` | Remote buttons only this activity has, see [Remote control](#remote-control) |
+
+`before` takes, per device of the activity:
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `delay` | `0` | Seconds to wait first |
+| `wait_for` | — | Devices of the activity to wait for, all at once: `{device: storm, state: on}` (its status says on) or `state: picture` (its picture check passes) |
+| `timeout` | `90` | Seconds to wait for them |
+| `on_timeout` | `continue` | `continue` warns and goes on; `abort` stops the start |
+
+Devices without a wait (`wait_on: none`) are turned on one right after another, so they boot together; `before` puts the order back where one needs another. For example, the projector and the processor at once, the video processor 3 s later, and the streamer once the processor is on and the video processor is on:
+
+```yaml
+devices: [jvc, storm, lumagen, shield]
+before:
+  lumagen: {delay: 3}
+  shield: {wait_for: [{device: storm}, {device: lumagen}]}
+```
 
 `on_start` and `on_stop` use the same syntax as scripts and automations: `action`, `if`/`then`, `choose`, `delay`, `wait_template`, `parallel` and so on. They run on a full stop only, not when switching to another activity.
 
@@ -442,14 +466,14 @@ The short version is below; [ACTIVITY_FLOW.md](ACTIVITY_FLOW.md) shows the whole
 1. **Smart switching** — if another activity runs in the room, its devices that the new one does not use are switched off. Power outlets that are no longer needed are switched off in the background once those devices had their `delay_after_off`.
 2. **Power** — all outlets of the activity's devices are switched on at once, so the devices boot in parallel.
 3. **`on_start`** starts running alongside.
-4. **Devices**, in order: boot time `delay_after_power` (only if its outlet was off), readiness check, switch on (only if off), `delay_after_on` (only if it was switched on).
+4. **Devices**, in order: its `before` (delay, then the devices it waits for), boot time `delay_after_power` (only if its outlet was off), readiness check, switch on (only if off), its wait (`wait_on`: status, `delay_after_on`, or none).
 5. **Steps**, in order.
 6. When `on_start` has finished too, the activity is `active`.
 
 ### Stop
 
 1. **`on_stop`** starts running alongside.
-2. **Devices** are switched off in reverse order. The room is idle once they are off and `on_stop` is done; a status LED on a wall button goes out right away.
+2. **Devices** are switched off in reverse order. The room is idle once they are off and `on_stop` is done; a status LED on a wall button goes out right away. A device with `turn_off_after` is switched off that much later, in the background.
 3. **Power outlets** whose devices need no cool-down are switched off at once. The others follow in the background after the longest `delay_after_off` of their devices; a device that was already off only counts what is left of its cool-down. Starting an activity in the meantime keeps the outlets it needs.
 
 For the example above: VU+, projector and Onkyo off → room idle → multimedia outlet off → 180 s later the projector outlet off.

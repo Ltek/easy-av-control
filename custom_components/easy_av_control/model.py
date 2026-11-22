@@ -61,6 +61,7 @@ from .const import (
     CONF_AREA_ID,
     CONF_ATTRIBUTE,
     CONF_AVAILABLE_IS_ON,
+    CONF_BEFORE,
     CONF_BRIGHTNESS_PCT,
     CONF_BUTTONS,
     CONF_CHECKS,
@@ -70,6 +71,7 @@ from .const import (
     CONF_DATA,
     CONF_DEBOUNCE,
     CONF_DEFAULT_ACTIVITY,
+    CONF_DELAY,
     CONF_DELAY_AFTER_OFF,
     CONF_DELAY_AFTER_ON,
     CONF_DELAY_AFTER_POWER,
@@ -80,10 +82,12 @@ from .const import (
     CONF_ICON,
     CONF_ID,
     CONF_NAME,
+    CONF_OFF_OPTION,
     CONF_ON_FAILURE,
     CONF_ON_START,
     CONF_ON_STOP,
     CONF_ON_TIMEOUT,
+    CONF_OPTION,
     CONF_OPTIONS,
     CONF_ORDER,
     CONF_POSITION,
@@ -108,16 +112,20 @@ from .const import (
     CONF_TIMEOUT_ON,
     CONF_TOUCHPAD,
     CONF_TRANSITION,
+    CONF_TURN_OFF_AFTER,
     CONF_TYPE,
     CONF_VOLUME_LEVEL,
+    CONF_WAIT_FOR,
     CONF_WAIT_OFF,
     CONF_WAIT_ON,
+    DEFAULT_BEFORE_TIMEOUT,
     DEFAULT_READY_TIMEOUT,
     DOMAIN,
     FAILURE_ACTIONS,
     FAILURE_STOP,
     FAILURE_WARN,
     ON_TIMEOUT_ABORT,
+    ON_TIMEOUT_CONTINUE,
     ON_TIMEOUT_OPTIONS,
     SETTING_ENTITY_DOMAINS,
     SETTING_SOUND_MODE,
@@ -136,6 +144,8 @@ from .const import (
     STEP_TYPE_SET_VOLUME,
     STEP_TYPE_WAIT_AVAILABLE,
     STEP_TYPE_WAIT_PICTURE,
+    WAIT_FOR_ON,
+    WAIT_FOR_PICTURE,
     WAIT_MODES,
 )
 
@@ -239,6 +249,10 @@ DEVICE_SCHEMA = vol.Schema(
         vol.Optional(CONF_DELAY_AFTER_POWER, default=0): _SECONDS,
         vol.Optional(CONF_DELAY_AFTER_ON, default=0): _SECONDS,
         vol.Optional(CONF_DELAY_AFTER_OFF, default=0): _SECONDS,
+        vol.Optional(CONF_TURN_OFF_AFTER): _SECONDS,
+        # A select (Harmony activities): the option for on; for off, power_off
+        vol.Optional(CONF_OPTION): str,
+        vol.Optional(CONF_OFF_OPTION): str,
         # Device states (no defaults: nothing is written while the automatic choice is kept)
         vol.Optional(CONF_PROFILE): vol.Match(r"^[a-z0-9_]+$"),
         vol.Optional(CONF_STATE_SOURCE): vol.Any(vol.All(str, vol.In([STATE_SOURCE_NONE])), STATE_SOURCE_SCHEMA),
@@ -417,6 +431,24 @@ REMOTE_SCHEMA = vol.Schema(
     }
 )
 
+BEFORE_SCHEMA = vol.Schema(
+    {
+        vol.Optional(CONF_DELAY, default=0): _SECONDS,
+        vol.Optional(CONF_WAIT_FOR, default=list): [
+            vol.Schema(
+                {
+                    vol.Required(CONF_DEVICE): _KEY,
+                    vol.Optional(CONF_STATE, default=WAIT_FOR_ON): vol.In([WAIT_FOR_ON, WAIT_FOR_PICTURE]),
+                }
+            )
+        ],
+        vol.Optional(CONF_TIMEOUT, default=DEFAULT_BEFORE_TIMEOUT): vol.All(
+            vol.Coerce(float), vol.Range(min=1, max=3600)
+        ),
+        vol.Optional(CONF_ON_TIMEOUT, default=ON_TIMEOUT_CONTINUE): vol.In(ON_TIMEOUT_OPTIONS),
+    }
+)
+
 _ACTIVITY_FIELDS = vol.Schema(
     {
         vol.Optional(CONF_NAME): str,
@@ -425,6 +457,8 @@ _ACTIVITY_FIELDS = vol.Schema(
         vol.Optional(CONF_DEVICES, default=list): [_KEY],
         vol.Optional(CONF_CHECKS, default=list): [CHECK_SCHEMA],
         vol.Optional(CONF_STEPS, default=list): [_step],
+        # Device -> what to wait for before it is turned on
+        vol.Optional(CONF_BEFORE, default=dict): {_KEY: BEFORE_SCHEMA},
         # Validated in depth by async_validate_config (needs hass)
         vol.Optional(CONF_ON_START, default=list): vol.Any(None, [dict]),
         vol.Optional(CONF_ON_STOP, default=list): vol.Any(None, [dict]),
@@ -487,6 +521,17 @@ def _check_references(rooms: dict[str, Any]) -> None:
                         f"unknown device '{check[CONF_DEVICE]}'",
                         path=[*base, CONF_CHECKS, idx, CONF_DEVICE],
                     )
+            for device_id, before in activity[CONF_BEFORE].items():
+                if device_id not in activity[CONF_DEVICES]:
+                    raise vol.Invalid(
+                        f"'{device_id}' is not a device of this activity", path=[*base, CONF_BEFORE, device_id]
+                    )
+                for idx, wait in enumerate(before[CONF_WAIT_FOR]):
+                    if wait[CONF_DEVICE] not in activity[CONF_DEVICES]:
+                        raise vol.Invalid(
+                            f"'{wait[CONF_DEVICE]}' is not a device of this activity",
+                            path=[*base, CONF_BEFORE, device_id, CONF_WAIT_FOR, idx, CONF_DEVICE],
+                        )
             for idx, step in enumerate(activity[CONF_STEPS]):
                 device = step.get(CONF_DEVICE)
                 if device is not None and device not in devices:
