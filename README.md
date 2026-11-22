@@ -462,6 +462,14 @@ A new command cancels whatever runs in the room: a stop during a long start take
 
 ## Remote control
 
+### Reports
+
+**Reports** in the panel's menu shows how long every start and stop took (grouped by room and activity, each run
+with its phases on a time line) and how long each device took to come on and go off, so you can see whether the
+whole flow varies or one device does. Device times are measured for devices with a status, from the command
+until the status says on (or off), only when Easy AV Control switched the device. The last 300 runs and 100
+times per device are kept in `.storage/easy_av_control.history`.
+
 ### The card
 
 Add the card to any dashboard (**Edit dashboard → Add card → Easy AV Control Remote**) and pick the room. Since Home Assistant 2026.6 the card picker also suggests it by entity: under **By entity**, open the area and the room's device ("AV: <room>") or pick one of its entities, and the card is offered with that room already set. Or in YAML:

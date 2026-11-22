@@ -1,5 +1,19 @@
 # Changelog
 
+## v2026.11.22.17
+
+**Added**
+- **Reports** in the left menu, under Setup. Two panels:
+  - **Runs:** every start and stop, grouped by room · activity (and, for a start, the activity it switched
+    from), with the typical time, fastest to slowest, failures and a bar chart of the runs over time. Each run
+    shows when it was, its total, how far it was from the typical time and its result; opened, its phases on one
+    time line: each device, the outlets, the checks, the actions.
+  - **Devices:** per device, how long it took to come on and to go off: typical, fastest to slowest, a bar chart,
+    and every time with the room and activity it was for, slow ones and failures marked.
+- The history is kept in `.storage/easy_av_control.history`: the last 300 runs and 100 times per device.
+  Times are measured while Easy AV Control switches, as before; failed waits are now kept too. **Clear** empties
+  it (the typical times used for timeouts stay).
+
 ## v2026.11.21.16
 
 **Fixed**

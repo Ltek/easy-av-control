@@ -20,7 +20,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import async_get_integration
 
-from . import sidebar, websocket
+from . import history, sidebar, websocket
 from .card_resource import (
     async_register_card_resource,
     async_remove_card_resource,
@@ -79,6 +79,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     _register_services(hass)
     websocket.async_register(hass)
     sidebar.async_setup_ws(hass)
+    history.async_setup_ws(hass)
     await _async_register_frontend(hass)
     return True
 
@@ -244,6 +245,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     coordinator = EasyAVControlCoordinator(hass, entry)
     coordinator.profiles = (await async_get_library(hass)).profiles
+    await history.async_get_history(hass)
     # Raises ConfigEntryError on an invalid configuration
     await coordinator.async_config_entry_first_refresh()
     hass.data[DOMAIN][entry.entry_id] = coordinator

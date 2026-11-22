@@ -119,6 +119,22 @@ await page.locator('easy-av-control-panel nav button', { hasText: 'Guide' }).cli
 await settle(1000);
 await shotBoth('guide');
 await page.locator('easy-av-control-guide button', { hasText: 'Close' }).click();
+await settle(600);
+// Reports: runs grouped by activity, one expanded with its phases; then the devices
+await page.locator('easy-av-control-panel nav button', { hasText: 'Reports' }).click();
+await settle(1500);
+await page.locator('easy-av-control-reports button.row').first().click();
+await settle(600);
+await page.locator('easy-av-control-reports button.run-row').first().click();
+await settle(600);
+await shotBoth('reports-runs');
+await page.locator('easy-av-control-reports summary', { hasText: 'Devices' }).click();
+await settle(800);
+await page.locator('easy-av-control-reports details[open] .ltek-item.group button.row').nth(1).click();
+await settle(600);
+await shotBoth('reports-devices');
+await page.locator('easy-av-control-panel nav button.room', { hasText: 'Living room' }).click();
+await settle(1000);
 await settle(800);
 
 // A device: the Device state panel with what was detected

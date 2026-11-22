@@ -191,6 +191,7 @@ from .device_state import (
     wait_mode,
 )
 from .device_timings import MAX_SAMPLES, add_sample, is_slow, typical
+from .history import RunRecorder, history_of
 from .model import CONF_DELAY_AFTER, async_validate_config, find_missing_entities
 
 _LOGGER = logging.getLogger(__name__)
@@ -359,6 +360,8 @@ class RoomRuntime:
     cooling: dict[str, dict[str, Any]] = field(default_factory=dict)
     # What a start or stop is busy with, for the card (see _doing)
     current: dict[str, Any] | None = None
+    # The start or stop being timed for the Reports page (history.py)
+    run: RunRecorder | None = None
 
 
 class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -1034,6 +1037,7 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         rt.warnings = []
         total = len(new_devices) + len(checks) + len(steps)
         rt.progress = (0, total)
+        rt.run = run = self._recorder(room_id, activity_id, "start", previous)
         ir.async_delete_issue(self.hass, DOMAIN, self._aborted_issue_id(room_id))
         self._changed()
 
@@ -1044,11 +1048,13 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         hook: asyncio.Task | None = None
         try:
             if previous is not None:
+                run.phase("switch_off_unused", activity=previous)
                 await self._async_switch_off_unused(room_id, previous, new_devices, context)
 
             # Switches that were off: their devices need their boot time
             powered = {s for s in needed_switches if self._is_off(s)}
             if needed_switches:
+                run.phase("outlets_on")
                 self._doing(rt, "power_on")
                 await self._async_call(
                     "homeassistant",
@@ -1065,6 +1071,7 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             for device_id in new_devices:
                 _current_device.set(device_id)
                 device = devices[device_id]
+                run.phase("device", device=device_id, entity_id=device[CONF_ENTITY_ID], name=self._device_name(device))
                 if device.get(CONF_POWER_SWITCH) in powered and device[CONF_DELAY_AFTER_POWER]:
                     # Devices on the same switch boot in parallel
                     remaining = device[CONF_DELAY_AFTER_POWER] - (self._now() - powered_at)
@@ -1111,11 +1118,14 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _current_device.set(None)
             # Checks: everything is on; is it working (a picture on the Lumagen, on the projector)?
             if checks:
+                run.phase("checks", count=len(checks))
                 await self._async_run_checks(rt, room, checks)
                 done += len(checks)
                 rt.progress = (done, total)
                 self.async_update_listeners()
 
+            if steps:
+                run.phase("steps", count=len(steps))
             for idx, step in enumerate(steps, 1):
                 _LOGGER.debug("Room '%s': step %d/%d %s", room_id, idx, len(steps), step)
                 position = {"step": idx, "steps": len(steps), "step_type": step[CONF_TYPE]}
@@ -1132,12 +1142,15 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             if hook is not None:
                 if not hook.done():
+                    run.phase("hooks", hook=CONF_ON_START)
                     self._doing(rt, "hooks", hook=CONF_ON_START)
                 await hook
         except asyncio.CancelledError:
             if hook is not None:
                 hook.cancel()
             rt.current = None
+            run.finish("cancelled", warnings=rt.warnings)
+            rt.run = None
             raise
         except Exception as err:
             if hook is not None:
@@ -1149,6 +1162,8 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 _LOGGER.error("Room '%s': start of '%s' aborted: %s", room_id, activity_id, err)
             else:
                 _LOGGER.exception("Room '%s': start of '%s' failed", room_id, activity_id)
+            run.finish("error", error=rt.error, warnings=rt.warnings)
+            rt.run = None
             ir.async_create_issue(
                 self.hass,
                 DOMAIN,
@@ -1169,6 +1184,8 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         rt.last_activity = activity_id
         rt.progress = (total, total)
         rt.current = None
+        run.finish("ok", warnings=rt.warnings)
+        rt.run = None
         self._changed()
         _LOGGER.info("Room '%s': '%s' is active", room_id, activity_id)
 
@@ -1373,6 +1390,8 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 result, value = await self._async_wait_state(rt, device, source, GROUP_ON, source.timeout_on)
                 if result == RESULT_OK and turn_on and not retried:
                     self._record_time(device, "on", self.hass.loop.time() - started)
+                if result != RESULT_OK and turn_on:
+                    self._record_event(device, "on", self.hass.loop.time() - started, result, value)
                 if result != RESULT_OK:
                     action = failure_action(device, CHECK_TURN_ON)
                     message = describe_failure(name, result, value, "on", source.timeout_on)
@@ -1470,6 +1489,44 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 _LOGGER.warning(message)
         timings[direction] = add_sample(samples, seconds)
         self._schedule_save()
+        self._record_event(device, direction, seconds, "ok", None, slow=is_slow(samples, seconds))
+
+    @callback
+    def _record_event(
+        self, device: dict[str, Any], direction: str, seconds: float, result: str, value: str | None, *, slow: bool = False
+    ) -> None:
+        """A device's time for the Reports page, good or not, with the run it belongs to."""
+        if (history := history_of(self.hass)) is None:
+            return
+        rt = _current_room.get()
+        run = rt.run.run if rt is not None and rt.run is not None else {}
+        event: dict[str, Any] = {
+            "at": dt_util.utcnow().isoformat(),
+            "direction": direction,
+            "seconds": round(seconds, 1),
+            "result": result,
+            "name": self._device_name(device),
+            **({"room": run["room"], "room_name": run["room_name"]} if run else {}),
+            **({"activity": run["activity"], "activity_name": run["activity_name"]} if run else {}),
+        }
+        if value is not None and result != "ok":
+            event["value"] = value
+        if slow:
+            event["slow"] = True
+        history.add_device_event(device[CONF_ENTITY_ID], event)
+
+    def _recorder(self, room_id: str, activity_id: str, mode: str, previous: str | None) -> RunRecorder:
+        room = self.rooms[room_id]
+        return RunRecorder(
+            self.hass,
+            entry_id=self.entry.entry_id,
+            room=room_id,
+            room_name=room.get(CONF_NAME, room_id),
+            activity=activity_id,
+            activity_name=self.activity_name(room_id, activity_id),
+            mode=mode,
+            **({"from": previous, "from_name": self.activity_name(room_id, previous)} if previous else {}),
+        )
 
     async def _async_wait_off(self, device: dict[str, Any], source: StateSource) -> bool:
         """Wait until a device says it is off, before its outlet is cut. False: leave the outlet on."""
@@ -1482,6 +1539,9 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if started is not None and not retried:
                     self._record_time(device, "off", self.hass.loop.time() - started)
                 return True
+            started = self._off_started.get(device[CONF_ENTITY_ID])
+            if started is not None:
+                self._record_event(device, "off", self.hass.loop.time() - started, result, value)
             action = failure_action(device, CHECK_TURN_OFF)
             message = describe_failure(name, result, value, "off", source.timeout_off)
             if action == FAILURE_RETRY and not retried:
@@ -1511,6 +1571,7 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         _LOGGER.info("Room '%s': stopping '%s'", room_id, activity_id)
 
         rt.state = ACTIVITY_STATE_STOPPING
+        rt.run = run = self._recorder(room_id, activity_id, "stop", None)
         self._changed()
 
         if activity is not None:
@@ -1525,6 +1586,7 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 for device_id in reversed(device_ids):
                     _current_device.set(device_id)
                     device = devices[device_id]
+                    run.phase("device", device=device_id, entity_id=device[CONF_ENTITY_ID], name=self._device_name(device))
                     entity_id = device[CONF_ENTITY_ID]
                     was_off = self._is_off(entity_id)
                     if not was_off:
@@ -1549,6 +1611,7 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self._cancel_cut(rt, switch)
                 now = [s for s in switches if cooldown.get(s, 0) <= 0 and not waits.get(s)]
                 if now:
+                    run.phase("outlets_off")
                     self._doing(rt, "power_off")
                     with contextlib.suppress(ActivityAborted):
                         await self._async_call(
@@ -1571,12 +1634,15 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         )
                 if hook is not None:
                     if not hook.done():
+                        run.phase("hooks", hook=CONF_ON_STOP)
                         self._doing(rt, "hooks", hook=CONF_ON_STOP)
                     await hook
             except asyncio.CancelledError:
                 if hook is not None:
                     hook.cancel()
                 rt.current = None
+                run.finish("cancelled")
+                rt.run = None
                 raise
             except Exception as err:
                 if hook is not None:
@@ -1585,9 +1651,13 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 _LOGGER.exception("Room '%s': stop of '%s' failed", room_id, activity_id)
                 rt.state = ACTIVITY_STATE_ERROR
                 rt.error = str(err) or type(err).__name__
+                run.finish("error", error=rt.error)
+                rt.run = None
                 self._changed()
                 return
 
+        run.finish("ok")
+        rt.run = None
         rt.activity = None
         rt.state = ACTIVITY_STATE_IDLE
         rt.error = None
