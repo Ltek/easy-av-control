@@ -214,7 +214,8 @@ await settle(1200);
 await page.locator('easy-av-control-room-editor .card-divider').scrollIntoViewIfNeeded();
 await shotBoth('activity-card');
 // The room's Watchdog page, from the menu
-await page.locator('easy-av-control-panel .nav-activity button', { hasText: 'Watchdog' }).first().click();
+await openPanel();
+await page.getByRole('tab', { name: 'Watchdog' }).click();
 await settle(2000);
 await shotBoth('watchdog');
 

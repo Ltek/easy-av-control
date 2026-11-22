@@ -486,7 +486,7 @@ For the example above: VU+, projector and Onkyo off → room idle → multimedia
 Every few seconds Easy AV Control looks at the devices. Each kind of problem is a binary sensor per room, on while
 it lasts, with the devices, since when, what is planned, its `scope` and the actions it allows as attributes.
 
-**Watchdog** is the room outside its activities: its own page in the panel's menu, under the room's activities.
+**Watchdog** is the room outside its activities: a tab on the room's page, next to Devices and Activities.
 
 | Sensor (`binary_sensor.av_<room>_…`) | On when | Set in |
 |---|---|---|

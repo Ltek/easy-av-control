@@ -57,7 +57,7 @@ import { ltekChrome, ltekPanelScale, ltekTokens } from "./ltek-styles";
 import "./remote-preview";
 import { t } from "./strings";
 
-type Tab = "devices" | "activities" | "yaml";
+type Tab = "devices" | "activities" | "watchdog" | "yaml";
 
 /** What the editor shows: a list (the tab) or one device or activity. */
 type View = { kind: "list" } | { kind: "device"; id: string } | { kind: "activity"; id: string } | { kind: "watchdog" };
@@ -209,11 +209,7 @@ export class EasyAvControlRoomEditor extends LitElement {
       this._draftStartedBy = undefined;
     }
     const jump = this.jump;
-    if (changed.has("jump") && jump?.watchdog) {
-      this._view = { kind: "watchdog" };
-      this._notice = undefined;
-      window.scrollTo({ top: 0 });
-    } else if (changed.has("jump") && jump && !jump.activity) {
+    if (changed.has("jump") && jump && !jump.activity) {
       this._view = { kind: "list" };
       this._notice = undefined;
     } else if (changed.has("jump") && jump?.activity && this.room?.activities?.[jump.activity]) {
@@ -263,9 +259,6 @@ export class EasyAvControlRoomEditor extends LitElement {
     if (view.kind === "activity" && this.room.activities?.[view.id]) {
       return this._renderActivity(view.id, this.room.activities[view.id]);
     }
-    if (view.kind === "watchdog") {
-      return this._renderWatchdog();
-    }
     const activityOptions = [
       { value: "__last", label: this._t("default_last") },
       ...Object.entries(this.room.activities ?? {}).map(([id, a]) => ({ value: id, label: a.name ?? id })),
@@ -299,7 +292,7 @@ export class EasyAvControlRoomEditor extends LitElement {
       ></ltek-form>
 
       <div class="tabs" role="tablist">
-        ${(["devices", "activities", "yaml"] as Tab[]).map(
+        ${(["devices", "activities", "watchdog", "yaml"] as Tab[]).map(
           (tab) => html`<button
             role="tab"
             class=${this._tab === tab ? "active" : ""}
@@ -315,7 +308,9 @@ export class EasyAvControlRoomEditor extends LitElement {
         ? this._renderDeviceList()
         : this._tab === "activities"
           ? this._renderActivityList()
-          : this._renderYaml()}
+          : this._tab === "watchdog"
+            ? this._renderWatchdog()
+            : this._renderYaml()}
       <button class="ltek-btn danger delete-room" @click=${() => this.dispatchEvent(new CustomEvent("delete-room"))}>
         <ha-icon icon="mdi:trash-can-outline"></ha-icon>
         ${this._t("delete_room")}
@@ -683,13 +678,7 @@ export class EasyAvControlRoomEditor extends LitElement {
     );
     const act = (problem: string, action: string) =>
       this.hass.callService("easy_av_control", "problem_action", { room: this.roomId, problem, action });
-    return html`<div class="detail-head">
-        <button class="back" @click=${() => this._show({ kind: "list" })}>
-          <ha-icon icon="mdi:arrow-left"></ha-icon><span>${this.room.name ?? this.roomId}</span>
-        </button>
-      </div>
-      <div class="title-row"><h2>${this._t("watchdog")}</h2></div>
-      <p class="ltek-hint">${this._t("watchdog_hint")}</p>
+    return html`<p class="ltek-hint">${this._t("watchdog_hint")}</p>
       ${sensors.length
         ? html`<div class="ltek-list watchdog-now">
             ${sensors.map((s) => {

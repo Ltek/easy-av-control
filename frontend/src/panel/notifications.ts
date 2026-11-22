@@ -104,8 +104,7 @@ export class EasyAvControlNotifications extends LitElement {
   private _edit(offer: Offer): void {
     const id = offer.automation?.edit_id;
     if (!id) return;
-    history.pushState(null, "", `/config/automation/edit/${id}`);
-    window.dispatchEvent(new CustomEvent("location-changed"));
+    window.open(`/config/automation/edit/${id}`, "_blank", "noopener");
   }
 
   protected render(): TemplateResult {

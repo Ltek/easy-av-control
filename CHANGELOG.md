@@ -1,5 +1,12 @@
 # Changelog
 
+## v2026.11.22.25
+
+**Changed**
+- **Watchdog** is a tab on the room's page (Devices, Activities, Watchdog, YAML) instead of an entry in the menu
+  among the activities.
+- **Edit** on the Notifications page opens the automation in a new browser tab.
+
 ## v2026.11.22.24
 
 **Changed**
