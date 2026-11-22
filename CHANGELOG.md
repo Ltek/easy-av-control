@@ -1,5 +1,21 @@
 # Changelog
 
+## v2026.11.22.23
+
+**Added**
+- **Duplicate** on an activity's page: an unsaved copy named "… (copy)", opened at once. Started by is left out, so
+  the copy doesn't start together with the original.
+- **Arrows** in the Flow to move a device earlier or later, in Startup and in Shutdown (Shutdown runs the devices in
+  reverse, so its arrows move them the other way in the list), and to reorder the actions after start and the checks.
+
+**Changed**
+- The Flow's **+** buttons are at its top, without the "Add to the startup" line.
+- "Flow options" is now **Flow Details Filters**.
+
+**Fixed**
+- A device not saved yet had no state chip in the Flow; the panel now sends the devices as edited.
+- A Harmony hub (any select device) without its profile read `power_off` as on.
+
 ## v2026.11.22.22
 
 **Added**

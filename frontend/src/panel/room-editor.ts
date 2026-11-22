@@ -318,15 +318,28 @@ export class EasyAvControlRoomEditor extends LitElement {
   }
 
   /** Header of a detail view: back, title, delete. */
-  private _detailHeader(back: string, title: string, onDelete: () => void, beside?: TemplateResult): TemplateResult {
+  private _detailHeader(
+    back: string,
+    title: string,
+    onDelete: () => void,
+    beside?: TemplateResult,
+    onDuplicate?: () => void,
+  ): TemplateResult {
     return html`<div class="detail-head">
         <button class="back" @click=${() => this._show({ kind: "list" })}>
           <ha-icon icon="mdi:arrow-left"></ha-icon>
           <span>${back}</span>
         </button>
-        <button class="ltek-btn danger" @click=${onDelete}>
-          <ha-icon icon="mdi:trash-can-outline"></ha-icon> ${this._t("delete")}
-        </button>
+        <span class="head-acts">
+          ${onDuplicate
+            ? html`<button class="ltek-btn" @click=${onDuplicate}>
+                <ha-icon icon="mdi:content-copy"></ha-icon> ${this._t("duplicate")}
+              </button>`
+            : nothing}
+          <button class="ltek-btn danger" @click=${onDelete}>
+            <ha-icon icon="mdi:trash-can-outline"></ha-icon> ${this._t("delete")}
+          </button>
+        </span>
       </div>
       <div class="title-row"><h2>${title}</h2>${beside ?? nothing}</div>
       ${this._notice ? html`<div class="notice">${this._notice}</div>` : nothing}`;
@@ -1034,7 +1047,13 @@ export class EasyAvControlRoomEditor extends LitElement {
     const extraButtons = ((remote.buttons as unknown[] | undefined) ?? []).filter((b) => !isQuickSelect(b));
 
     return html`
-      ${this._detailHeader(this._t("tab_activities"), activity.name ?? id, () => this._deleteActivity(id, activity), this._runButtons(id))}
+      ${this._detailHeader(
+        this._t("tab_activities"),
+        activity.name ?? id,
+        () => this._deleteActivity(id, activity),
+        this._runButtons(id),
+        () => this._duplicateActivity(id, activity),
+      )}
 
       ${this._card(this._t("section_flow"), `${this._t("hint_flow")} ${this._t("flow.edit_hint")}`, this._renderFlowEditor(id, activity))}
 
@@ -1139,6 +1158,7 @@ export class EasyAvControlRoomEditor extends LitElement {
         this._flowEditing = editing?.key === ev.detail.key ? undefined : ev.detail;
       }}
       @flow-delete=${(ev: CustomEvent<FlowDelete>) => this._flowDelete(id, activity, ev.detail)}
+      @flow-move=${(ev: CustomEvent<FlowMove>) => this._flowMove(id, activity, ev.detail)}
     >
       ${editing && !editing.key.startsWith("__")
         ? html`<div slot="edit">${this._inlineEditor(id, activity, editing)}</div>`
@@ -1387,7 +1407,6 @@ export class EasyAvControlRoomEditor extends LitElement {
     const hasHook = ((activity[hook] as unknown[] | undefined) ?? []).length > 0;
     const open = (key: string, panel: string) => (this._flowEditing = { key, panel });
     return html`<div class="flow-add">
-        <span class="ltek-hint">${this._t(mode === "start" ? "flow.add_hint" : "flow.add_stop_hint")}</span>
         ${mode === "start"
           ? html`${free.length
                 ? html`<select
@@ -1468,13 +1487,34 @@ export class EasyAvControlRoomEditor extends LitElement {
       return html``;
     }
     return html`<div class="flow-add">
-      <span class="ltek-hint">${this._t("flow.add_monitor_hint")}</span>
       ${off(m.idle_after, 0) ? html`<button class="ltek-add" @click=${() => set({ idle_after: 1800 })}>+ ${this._t("flow.add_monitor_idle")}</button>` : nothing}
       ${off(m.lost_after, 60) ? html`<button class="ltek-add" @click=${() => set({ lost_after: 60 })}>+ ${this._t("flow.add_monitor_lost")}</button>` : nothing}
       ${(activity.checks ?? []).length && off(m.picture_lost_after, 60)
         ? html`<button class="ltek-add" @click=${() => set({ picture_lost_after: 60 })}>+ ${this._t("flow.add_monitor_picture")}</button>`
         : nothing}
     </div>`;
+  }
+
+  /** A Flow row's arrows: a device earlier or later (Shutdown shows them in reverse), an action, a check. */
+  private _flowMove(id: string, activity: Activity, detail: FlowMove): void {
+    const swap = <T>(list: T[], index: number, dir: number): T[] | undefined => {
+      const to = index + dir;
+      if (index < 0 || to < 0 || to >= list.length) return undefined;
+      const next = [...list];
+      [next[index], next[to]] = [next[to], next[index]];
+      return next;
+    };
+    if (detail.what === "device" && detail.device) {
+      const list = activity.devices ?? [];
+      const next = swap(list, list.indexOf(detail.device), detail.mode === "stop" ? -detail.dir : detail.dir);
+      if (next) this._setActivity(id, { ...activity, devices: next });
+    } else if (detail.what === "step") {
+      const next = swap(activity.steps ?? [], detail.index, detail.dir);
+      if (next) this._setActivity(id, { ...activity, steps: next });
+    } else if (detail.what === "check") {
+      const next = swap((activity.checks as Obj[] | undefined) ?? [], detail.index, detail.dir);
+      if (next) this._setActivity(id, { ...activity, checks: next });
+    }
   }
 
   /** A Flow row's trash icon. Device settings change for every activity that uses the device. */
@@ -2079,6 +2119,20 @@ export class EasyAvControlRoomEditor extends LitElement {
     this._show({ kind: "activity", id });
   }
 
+  /** A copy of the activity, unsaved, opened at once. Started by is left out: the copy would start with the original. */
+  private _duplicateActivity(id: string, activity: Activity): void {
+    const name = `${activity.name ?? id} ${this._t("copy_suffix")}`;
+    const to = uniqueKey(slugify(name), Object.keys(this.room.activities ?? {}));
+    const copy = clean({
+      ...(JSON.parse(JSON.stringify(activity)) as Activity),
+      name,
+      order: activity.order !== undefined ? activity.order + 1 : undefined,
+      started_by: undefined,
+    }) as Activity;
+    this._emit({ ...this.room, activities: { ...this.room.activities, [to]: copy } });
+    this._show({ kind: "activity", id: to });
+  }
+
   private _deleteActivity(id: string, activity: Activity): void {
     if (!window.confirm(`${this._t("delete")}: ${activity.name ?? id}?`)) {
       return;
@@ -2464,6 +2518,10 @@ export class EasyAvControlRoomEditor extends LitElement {
       cursor: pointer;
       font: inherit;
     }
+    .head-acts {
+      display: flex;
+      gap: 8px;
+    }
     .title-row {
       display: flex;
       align-items: center;
@@ -2672,3 +2730,5 @@ function monitorConfig(v: Obj): Activity["monitor"] {
   }, ["lost_after", "picture_lost_after"].filter((k) => Number(v[k]) === 0));
   return Object.keys(out).length ? out : undefined;
 }
+
+type FlowMove = { what: "device" | "step" | "check"; device?: string; index: number; dir: number; mode: string };

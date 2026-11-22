@@ -44,7 +44,7 @@ from .device_profiles import ROLES, best_for_role, physical_devices, resolve
 from .device_state import effective_source, wait_mode
 from .device_timings import timings_of, view as timing_view
 from .flow import plan_monitor, plan_start, plan_stop
-from .model import async_validate_config, find_missing_entities
+from .model import DEVICE_SCHEMA, async_validate_config, find_missing_entities
 from .profile_library import async_get_library, profile_for_device
 
 
@@ -193,7 +193,13 @@ def ws_control_flow(
 
 
 @websocket_api.websocket_command(
-    {vol.Required("type"): f"{DOMAIN}/control/states", vol.Required(ATTR_ROOM): str, vol.Optional("entry_id"): str}
+    {
+        vol.Required("type"): f"{DOMAIN}/control/states",
+        vol.Required(ATTR_ROOM): str,
+        vol.Optional("entry_id"): str,
+        # The panel: the devices as edited (a device not saved yet)
+        vol.Optional(CONF_DEVICES): dict,
+    }
 )
 @callback
 def ws_control_states(
@@ -201,10 +207,18 @@ def ws_control_states(
 ) -> None:
     """Each device of a saved room: what its state means now (the Flow's colours)."""
     coordinator = find_room(hass, msg[ATTR_ROOM], msg.get("entry_id"))
+    if coordinator is None and CONF_DEVICES in msg:
+        coordinator = next(iter(_coordinators(hass)), None)
     if coordinator is None:
         connection.send_result(msg["id"], {})
         return
-    connection.send_result(msg["id"], coordinator.device_states(msg[ATTR_ROOM]))
+    devices: dict[str, Any] = {}
+    for key, raw in (msg.get(CONF_DEVICES) or {}).items():
+        try:
+            devices[key] = DEVICE_SCHEMA(raw)
+        except vol.Invalid:
+            continue
+    connection.send_result(msg["id"], coordinator.device_states(msg[ATTR_ROOM], devices if CONF_DEVICES in msg else None))
 
 
 # ----------------------------------------------------------------------

@@ -22,6 +22,8 @@ type Flow =
 
 type Mode = "start" | "stop" | "monitor";
 
+type Move = { what: "device" | "step" | "check"; device?: string; index: number; first: boolean; last: boolean };
+
 /** Wait this long after the last change before asking for the flow again. */
 const DEBOUNCE = 400;
 
@@ -269,6 +271,8 @@ export class EasyAvControlFlow extends LitElement {
         type: "easy_av_control/control/states",
         room: this.roomId,
         ...(this.entryId ? { entry_id: this.entryId } : {}),
+        // In the panel: the devices as edited, so a device not saved yet has its chip too
+        ...(this.live ? {} : { devices: this.room?.devices ?? {} }),
       });
     } catch {
       /* colours are a nicety */
@@ -518,7 +522,44 @@ export class EasyAvControlFlow extends LitElement {
     return undefined;
   }
 
-  private _renderRow(row: Row, nested: boolean, showTime: boolean, group?: Row, status?: RowStatus): TemplateResult {
+  /** Where a row can move to, in the panel: a device (Startup and Shutdown), an action after start, a check. */
+  private _moves(rows: Row[], under: (Row | undefined)[]): Map<number, Move> {
+    const moves = new Map<number, Move>();
+    if (this.live || this._mode === "monitor") return moves;
+    const devices = rows
+      .map((row, i) => ({ row, i }))
+      .filter(({ row }) =>
+        !row.background && (this._mode === "start" ? row.kind === "device" : row.kind === "turn_off" && row.reason !== "unused" && !row.step),
+      );
+    devices.forEach(({ row, i }, n) =>
+      moves.set(i, { what: "device", device: String(row.device), index: n, first: n === 0, last: n === devices.length - 1 }),
+    );
+    rows.forEach((row, i) => {
+      const header = under[i];
+      if (header?.kind === "steps" && row.step && !moves.has(i)) {
+        const index = Number(row.step) - 1;
+        moves.set(i, { what: "step", index, first: index === 0, last: index === Number(header.count) - 1 });
+      } else if (row.kind === "check" && header?.kind === "checks") {
+        const index = Number(row.check) - 1;
+        moves.set(i, { what: "check", index, first: index === 0, last: index === Number(header.count) - 1 });
+      }
+    });
+    return moves;
+  }
+
+  private _moveButtons(move: Move): TemplateResult {
+    const send = (dir: number) =>
+      this.dispatchEvent(
+        new CustomEvent("flow-move", { detail: { ...move, dir, mode: this._mode }, bubbles: true, composed: true }),
+      );
+    return html`<button class="ltek-act move" title=${this._t("move_earlier")} aria-label=${this._t("move_earlier")} ?disabled=${move.first} @click=${() => send(-1)}>
+        <ha-icon icon="mdi:arrow-up"></ha-icon></button
+      ><button class="ltek-act move" title=${this._t("move_later")} aria-label=${this._t("move_later")} ?disabled=${move.last} @click=${() => send(1)}>
+        <ha-icon icon="mdi:arrow-down"></ha-icon>
+      </button>`;
+  }
+
+  private _renderRow(row: Row, nested: boolean, showTime: boolean, group?: Row, status?: RowStatus, move?: Move): TemplateResult {
     const target = this.live ? undefined : this._target(row, group);
     const key = rowKey(row, group);
     const notes = this._hides("notes") ? [] : this._notes(row);
@@ -564,7 +605,7 @@ export class EasyAvControlFlow extends LitElement {
       ${this.live
         ? nothing
         : html`<span class="acts"
-            >${target
+            >${move ? this._moveButtons(move) : nothing}${target
               ? html`<button
                   class="ltek-act edit ${this.editing === key ? "on" : ""}"
                   title=${this._t("flow.edit")}
@@ -605,13 +646,14 @@ export class EasyAvControlFlow extends LitElement {
       if (active > this._reached && !HEADERS.has(rows[active].kind)) this._reached = active;
     }
     const background = rows.filter((row) => row.background);
+    const moves = this._moves(rows, under);
     let last = "";
     const items = rows.flatMap((row, i) => {
       if (row.background || (!this._detailsOn && hiddenRow(row, this._detailKinds))) return [];
       const time = this._time(row.at);
       const show = time !== last || row.kind === "state";
       last = time;
-      return [this._renderRow(row, under[i] !== undefined, show, under[i], statuses?.[i])];
+      return [this._renderRow(row, under[i] !== undefined, show, under[i], statuses?.[i], moves.get(i))];
     });
     return html`<ol class="flow">${items}</ol>
       ${background.length
@@ -711,8 +753,8 @@ export class EasyAvControlFlow extends LitElement {
         : this._t(background.length ? "flow.summary_stop_cut" : "flow.summary_stop", {
             seconds: this._seconds(Math.max(0, ...background)),
           });
-    return html`${this._renderRows(flow.rows)}
-      ${this.live ? nothing : html`<div class="adder"><slot name=${`add-${this._mode}`}></slot></div>`}
+    return html`${this.live ? nothing : html`<div class="adder"><slot name=${`add-${this._mode}`}></slot></div>`}
+      ${this._renderRows(flow.rows)}
       ${this._detailsOn ? html`<p class="summary">${summary}</p>` : nothing}`;
   }
 
@@ -952,7 +994,18 @@ export class EasyAvControlFlow extends LitElement {
       background: var(--secondary-background-color);
     }
     .adder {
-      margin-top: 10px;
+      margin: 4px 0 10px;
+    }
+    .acts .move {
+      --mdc-icon-size: 16px;
+      padding-top: 2px;
+      opacity: 0.45;
+    }
+    li:hover .acts .move:not([disabled]) {
+      opacity: 1;
+    }
+    .acts .move[disabled] {
+      opacity: 0.15;
     }
     button.edit {
       --mdc-icon-size: 16px;

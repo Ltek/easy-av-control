@@ -784,6 +784,18 @@ async def test_live_flow_states_and_the_device_being_switched(
     assert set(states) == {"onkyo", "beamer", "vu"}
     assert all(v["group"] in ("on", "off", "unknown", "unavailable", "starting", "stopping", "error") for v in states.values())
 
+    # The panel sends the devices as edited: a Harmony hub not saved yet has its state too
+    hass.states.async_set("select.harmony_hub_activities", "power_off", {"options": ["power_off", "On"]})
+    await client.send_json_auto_id(
+        {
+            "type": "easy_av_control/control/states",
+            "room": "wz",
+            "devices": {"harmony": {"entity_id": "select.harmony_hub_activities"}, "bad": {"name": "no entity"}},
+        }
+    )
+    edited = (await client.receive_json())["result"]
+    assert edited == {"harmony": {"group": "off", "value": "power_off"}}
+
     seen: list[str | None] = []
 
     def watch() -> None:

@@ -934,11 +934,13 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # Remote control
     # ------------------------------------------------------------------
 
-    def device_states(self, room_id: str) -> dict[str, dict[str, Any]]:
+    def device_states(self, room_id: str, devices: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:
         """Each device's state now, for the Flow's colours: group (on, starting, stopping, off, error, unknown,
-        unavailable) and its own word for it."""
+        unavailable) and its own word for it. ``devices``: these (as edited in the panel) instead of the saved ones."""
         out: dict[str, dict[str, Any]] = {}
-        for device_id, device in self.rooms[room_id][CONF_DEVICES].items():
+        if devices is None:
+            devices = self.rooms[room_id][CONF_DEVICES] if room_id in self.rooms else {}
+        for device_id, device in devices.items():
             state = self.hass.states.get(device[CONF_ENTITY_ID])
             if state is None or state.state == STATE_UNAVAILABLE:
                 out[device_id] = {"group": "unavailable", "value": None}
@@ -946,6 +948,11 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             source = self.state_source(device)
             if source is not None:
                 group, value = source.current(self.hass)
+            elif device[CONF_ENTITY_ID].startswith(("select.", "input_select.")):
+                # A select device (Harmony activities): off on its off option
+                value = state.state
+                off = device.get(CONF_OFF_OPTION) or DEFAULT_OFF_OPTION
+                group = GROUP_OFF if value == off else GROUP_ON if value != STATE_UNKNOWN else "unknown"
             else:
                 value = state.state
                 group = GROUP_OFF if value in (STATE_OFF, STATE_STANDBY) else GROUP_ON if value != STATE_UNKNOWN else "unknown"
