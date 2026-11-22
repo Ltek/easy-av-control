@@ -11,6 +11,7 @@ export interface Phase {
 }
 
 export interface Run {
+  id?: string;
   at: string;
   room: string;
   room_name: string;

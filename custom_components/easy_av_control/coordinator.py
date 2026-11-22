@@ -203,6 +203,14 @@ STORAGE_VERSION = 1
 # (5, 10, 20, 40 s ...), which can miss a device that came up meanwhile
 RELOAD_RETRY_INTERVAL = 5.0
 
+# A device whose power entity is unreachable when it is to be switched (its integration lost the connection, or
+# is reloading): wait this long for it to come back, checking every REACH_POLL seconds; after REACH_RELOAD_AFTER
+# seconds reload its integration once. It must stay reachable for REACH_SETTLE seconds before it is switched.
+REACH_TIMEOUT = 30.0
+REACH_POLL = 0.5
+REACH_RELOAD_AFTER = 10.0
+REACH_SETTLE = 2.0
+
 # Lists of the configured media players that are remembered while they are
 # off: attribute -> key in the stored state
 _REMEMBERED_LISTS = {"source_list": "sources", "sound_mode_list": "sound_modes"}
@@ -1380,12 +1388,17 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         else:
             turn_on = self._is_off(entity_id)
 
+        if turn_on:
+            # Reachable first, so the time measured is the device's, not a reconnect's
+            await self._async_wait_reachable(entity_id, (device.get(CONF_READY) or {}).get(CONF_TIMEOUT, REACH_TIMEOUT))
         retried = False
         while True:
             started = self.hass.loop.time()
             if turn_on:
                 self._doing(rt, "turn_on", name=name)
-                await self._async_power_on(entity_id, context)
+                await self._async_power_on(
+                    entity_id, context, (device.get(CONF_READY) or {}).get(CONF_TIMEOUT, REACH_TIMEOUT)
+                )
             if source is not None and mode != WAIT_TIME:
                 result, value = await self._async_wait_state(rt, device, source, GROUP_ON, source.timeout_on)
                 if result == RESULT_OK and turn_on and not retried:
@@ -1515,8 +1528,39 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             event["slow"] = True
         history.add_device_event(device[CONF_ENTITY_ID], event)
 
+    def _room_entities(self, room_id: str) -> list[str]:
+        """Every entity a run of the room depends on: devices, their status, remotes, outlets, connection and
+        picture checks, and the entities the activities check."""
+        room = self.rooms[room_id]
+        out: set[str] = set()
+        for device in room[CONF_DEVICES].values():
+            out.add(device[CONF_ENTITY_ID])
+            for key in (CONF_POWER_SWITCH, CONF_REMOTE_ENTITY):
+                if device.get(key):
+                    out.add(device[key])
+            if (device.get(CONF_READY) or {}).get(CONF_ENTITY_ID):
+                out.add(device[CONF_READY][CONF_ENTITY_ID])
+            with contextlib.suppress(Exception):
+                if (source := self.state_source(device)) is not None:
+                    out.add(source.entity_id)
+                if (picture := picture_source(self.hass, self.profiles, device)) is not None:
+                    out.add(picture[0].entity_id)
+        for activity in room[CONF_ACTIVITIES].values():
+            for check in activity.get(CONF_CHECKS) or []:
+                if check.get(CONF_ENTITY_ID):
+                    out.add(check[CONF_ENTITY_ID])
+        return sorted(out)
+
     def _recorder(self, room_id: str, activity_id: str, mode: str, previous: str | None) -> RunRecorder:
         room = self.rooms[room_id]
+        recorder = self._new_recorder(room_id, room, activity_id, mode, previous)
+        recorder.watch(self._room_entities(room_id), lambda e: not self._entity_unavailable(e))
+        recorder.event("begin", mode=mode, activity=activity_id, **({"from": previous} if previous else {}))
+        return recorder
+
+    def _new_recorder(
+        self, room_id: str, room: dict[str, Any], activity_id: str, mode: str, previous: str | None
+    ) -> RunRecorder:
         return RunRecorder(
             self.hass,
             entry_id=self.entry.entry_id,
@@ -1890,12 +1934,49 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         entity = component.get_entity(entity_id) if component is not None else None
         return entity is not None and not entity.available
 
-    async def _async_power_on(self, entity_id: str, context: Context) -> None:
+    def _reachable(self, entity_id: str) -> bool:
+        """The entity has a state other than unavailable and its integration reports it available."""
+        state = self.hass.states.get(entity_id)
+        return state is not None and state.state != STATE_UNAVAILABLE and not self._entity_unavailable(entity_id)
+
+    async def _async_wait_reachable(self, entity_id: str, timeout: float) -> bool:
+        """Wait until an unreachable entity is back and stays so for REACH_SETTLE s; reload its integration
+        once if it takes long. True when it is reachable."""
+        if self._reachable(entity_id):
+            return True
+        _LOGGER.info("%s is not reachable, waiting up to %g s for it", entity_id, timeout)
+        if (rt := _current_room.get()) is not None:
+            self._doing(rt, "reach", name=self._entity_name(entity_id), seconds=timeout)
+        if rt is not None and rt.run is not None:
+            rt.run.event("unreachable", entity_id=entity_id, timeout=timeout)
+        waited = 0.0
+        since: float | None = None
+        reloaded = False
+        while waited < timeout:
+            await self._async_sleep(REACH_POLL)
+            waited += REACH_POLL
+            if self._reachable(entity_id):
+                since = waited if since is None else since
+                if waited - since >= REACH_SETTLE:
+                    _LOGGER.info("%s is reachable again after %.1f s", entity_id, waited)
+                    if rt is not None and rt.run is not None:
+                        rt.run.event("reachable", entity_id=entity_id, after=round(waited, 1))
+                    return True
+            else:
+                since = None
+                if not reloaded and waited >= REACH_RELOAD_AFTER:
+                    reloaded = True
+                    if rt is not None and rt.run is not None:
+                        rt.run.event("reload", entity_id=entity_id)
+                    self._reload_integration_of(entity_id)
+        return False
+
+    async def _async_power_on(self, entity_id: str, context: Context, timeout: float = REACH_TIMEOUT) -> None:
         if not can_switch(self.hass, entity_id, on=True):
             _LOGGER.debug("%s cannot be switched on, skipping", entity_id)
             return
-        if self._entity_unavailable(entity_id):
-            self._warn(f"turn on: {entity_id} is not reachable, it was not switched on")
+        if not await self._async_wait_reachable(entity_id, timeout):
+            self._warn(f"turn on: {entity_id} was not reachable for {timeout:g} s, it was not switched on")
             return
         domain, service = power_service(entity_id, on=True)
         await self._async_call(domain, service, {ATTR_ENTITY_ID: entity_id}, context, "turn on")
@@ -1921,6 +2002,10 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         Failures are logged and recorded as warnings; the activity goes on.
         """
+        rt = _current_room.get()
+        run = rt.run if rt is not None else None
+        started = self.hass.loop.time()
+        result = "ok"
         try:
             async with asyncio.timeout(self.service_timeout):
                 await self.hass.services.async_call(
@@ -1932,9 +2017,22 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     target=target,
                 )
         except TimeoutError:
+            result = "timeout"
             self._warn(f"{label}: {domain}.{service} did not finish within {self.service_timeout:g} s")
         except Exception as err:  # noqa: BLE001 - any failing device must not stop the rest
+            result = f"error: {err}"
             self._warn(f"{label}: {domain}.{service} failed: {err}")
+        if run is not None:
+            run.event(
+                "call",
+                service=f"{domain}.{service}",
+                data={k: v for k, v in data.items()},
+                **({"target": target} if target else {}),
+                label=label,
+                result=result,
+                seconds=round(self.hass.loop.time() - started, 2),
+                context=context.id,
+            )
 
     def _doing(
         self,
@@ -1954,6 +2052,8 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         current: dict[str, Any] = {"kind": kind, "name": name, **extra}
         if (device := _current_device.get()) is not None:
             current["device"] = device
+        if rt.run is not None:
+            rt.run.event("doing", **{k: v for k, v in current.items() if v is not None}, **({"seconds": seconds} if seconds else {}))
         if seconds is not None:
             current["until"] = (dt_util.utcnow() + timedelta(seconds=seconds)).isoformat()
         rt.current = current
@@ -1975,6 +2075,8 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         _LOGGER.warning(message)
         if (rt := _current_room.get()) is not None:
             rt.warnings.append(message)
+            if rt.run is not None:
+                rt.run.event("warning", message=message)
 
     def _start_hook(
         self, room_id: str, activity_id: str, key: str, context: Context

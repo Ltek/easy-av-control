@@ -435,6 +435,14 @@ devices you set up already pick up their profile automatically.
 - A device that gets a profile goes into the power-on order with every detection default on.
 - Every settings page follows the design guide.
 
+## Done in 2026.11.22.18 (noted 2026-11-22)
+
+- Startup / Shutdown wording and buttons (Startup held 3 s).
+- Lumagen not turned on in the first Theater run: its integration had just dropped the connection, so the switch
+  was unavailable and the turn-on was skipped. Easy AV Control now waits for an unreachable device; Ltek/lumagen
+  v2026.11.22.3 no longer drops the connection on one late reply and gives 90 s after a power command.
+- Report export with run traces.
+
 ## Roadmap (after this plan)
 
 Done after the plan: **measured times** (2026.11.20.7).

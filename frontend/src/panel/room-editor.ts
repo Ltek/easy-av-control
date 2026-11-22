@@ -135,6 +135,7 @@ export class EasyAvControlRoomEditor extends LitElement {
   declare _powerOn: Set<string>;
   /** The outlet a device had when it was unticked, to bring back when it is ticked again */
   private _powerMemo = new Map<string, Obj>();
+  private _holdTimer?: number;
   /** One panel open at a time (design guide): per page, the open one ("" = none); absent = the first one */
   private _openPanel = new Map<string, string>();
   /** While a page renders: the first panel that may start open */
@@ -288,7 +289,7 @@ export class EasyAvControlRoomEditor extends LitElement {
   }
 
   /** Header of a detail view: back, title, delete. */
-  private _detailHeader(back: string, title: string, onDelete: () => void): TemplateResult {
+  private _detailHeader(back: string, title: string, onDelete: () => void, beside?: TemplateResult): TemplateResult {
     return html`<div class="detail-head">
         <button class="back" @click=${() => this._show({ kind: "list" })}>
           <ha-icon icon="mdi:arrow-left"></ha-icon>
@@ -298,8 +299,49 @@ export class EasyAvControlRoomEditor extends LitElement {
           <ha-icon icon="mdi:trash-can-outline"></ha-icon> ${this._t("delete")}
         </button>
       </div>
-      <h2>${title}</h2>
+      <div class="title-row"><h2>${title}</h2>${beside ?? nothing}</div>
       ${this._notice ? html`<div class="notice">${this._notice}</div>` : nothing}`;
+  }
+
+  /** Startup (held 3 s, so a stray tap starts nothing) and Shutdown, beside the activity's name. */
+  private _runButtons(id: string): TemplateResult {
+    const saved = Boolean(this.saved?.activities?.[id]);
+    const startHold = (ev: PointerEvent) => {
+      const button = ev.currentTarget as HTMLElement;
+      button.setPointerCapture?.(ev.pointerId);
+      button.classList.add("holding");
+      this._holdTimer = window.setTimeout(() => {
+        button.classList.remove("holding");
+        this._holdTimer = undefined;
+        void this.hass.callService("easy_av_control", "start_activity", { room: this.roomId, activity: id });
+      }, 3000);
+    };
+    const cancelHold = (ev: Event) => {
+      (ev.currentTarget as HTMLElement).classList.remove("holding");
+      window.clearTimeout(this._holdTimer);
+      this._holdTimer = undefined;
+    };
+    return html`<span class="run-buttons">
+      <button
+        class="run-btn startup"
+        title=${`${this._t("act_hold")}. ${this._t("act_saved_only")}`}
+        ?disabled=${!saved}
+        @pointerdown=${startHold}
+        @pointerup=${cancelHold}
+        @pointerleave=${cancelHold}
+        @pointercancel=${cancelHold}
+        @contextmenu=${(ev: Event) => ev.preventDefault()}
+      >
+        <span class="fill"></span><ha-icon icon="mdi:play"></ha-icon>${this._t("act_startup")}
+      </button>
+      <button
+        class="run-btn shutdown"
+        title=${this._t("act_shutdown")}
+        @click=${() => this.hass.callService("easy_av_control", "stop_activity", { room: this.roomId })}
+      >
+        <ha-icon icon="mdi:stop"></ha-icon>${this._t("act_shutdown")}
+      </button>
+    </span>`;
   }
 
   /** A top-level panel (design guide): accent border when open; open or closed survives every redraw. */
@@ -888,7 +930,7 @@ export class EasyAvControlRoomEditor extends LitElement {
     const extraButtons = ((remote.buttons as unknown[] | undefined) ?? []).filter((b) => !isQuickSelect(b));
 
     return html`
-      ${this._detailHeader(this._t("tab_activities"), activity.name ?? id, () => this._deleteActivity(id, activity))}
+      ${this._detailHeader(this._t("tab_activities"), activity.name ?? id, () => this._deleteActivity(id, activity), this._runButtons(id))}
 
       ${this._card(
         this._t("section_general"),
@@ -1919,6 +1961,64 @@ export class EasyAvControlRoomEditor extends LitElement {
       align-items: center;
       gap: var(--ltek-sp-2);
       margin-top: 32px;
+    }
+    /* Startup / Shutdown beside the activity's name */
+    .title-row {
+      display: flex;
+      align-items: center;
+      gap: var(--ltek-sp-4);
+      flex-wrap: wrap;
+    }
+    .title-row h2 {
+      margin-right: auto;
+    }
+    .run-buttons {
+      display: inline-flex;
+      gap: var(--ltek-sp-2);
+    }
+    button.run-btn {
+      position: relative;
+      overflow: hidden;
+      display: inline-flex;
+      align-items: center;
+      gap: var(--ltek-sp-1);
+      padding: var(--ltek-ctrl-pad);
+      border-radius: var(--ltek-r-ctrl);
+      border: 1px solid var(--ltek-c-border);
+      background: transparent;
+      color: var(--ltek-c-text);
+      font: inherit;
+      font-size: var(--ltek-fs-body);
+      cursor: pointer;
+      user-select: none;
+      touch-action: none;
+      --mdc-icon-size: 18px;
+    }
+    button.run-btn:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+    button.run-btn.startup {
+      border-color: var(--green-color, #4caf50);
+      color: var(--green-color, #4caf50);
+    }
+    button.run-btn.shutdown {
+      border-color: var(--red-color, #f44336);
+      color: var(--red-color, #f44336);
+    }
+    button.run-btn > * {
+      position: relative;
+    }
+    /* Held: fills up over the 3 seconds */
+    button.run-btn .fill {
+      position: absolute;
+      inset: 0;
+      width: 0;
+      background: color-mix(in srgb, var(--green-color, #4caf50) 30%, transparent);
+    }
+    button.run-btn.holding .fill {
+      width: 100%;
+      transition: width 3s linear;
     }
     /* Start of the Remote control card's settings */
     .card-divider {

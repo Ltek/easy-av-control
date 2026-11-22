@@ -36,6 +36,7 @@ export class EasyAvControlReports extends LitElement {
     _open: { state: true },
     _expanded: { state: true },
     _mode: { state: true },
+    _copied: { state: true },
   };
 
   declare hass: HomeAssistant;
@@ -46,6 +47,7 @@ export class EasyAvControlReports extends LitElement {
   /** Expanded rows (group keys, run timestamps, device entities) */
   declare _expanded: Set<string>;
   declare _mode: "all" | "start" | "stop";
+  declare _copied: boolean;
 
   constructor() {
     super();
@@ -65,6 +67,36 @@ export class EasyAvControlReports extends LitElement {
       this._failed = undefined;
     } catch (err) {
       this._failed = (err as { message?: string }).message ?? String(err);
+    }
+  }
+
+  /** Download the report (all runs, or one with its trace); where downloads don't work, copy it. */
+  private async _export(run?: string): Promise<void> {
+    const report = await this.hass.callWS<Record<string, unknown>>({
+      type: "easy_av_control/history/export",
+      ...(run ? { run } : {}),
+    });
+    const text = JSON.stringify(report, null, 2);
+    const stamp = new Date().toISOString().replace(/[-:]/g, "").slice(0, 13);
+    const name = `easy-av-control-report-${run ? `run-${run.split("-")[0]}` : stamp}.json`;
+    try {
+      const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 5000);
+    } catch {
+      /* fall back to the clipboard below */
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      this._copied = true;
+      window.setTimeout(() => (this._copied = false), 3000);
+    } catch {
+      /* a download is enough */
     }
   }
 
@@ -101,6 +133,10 @@ export class EasyAvControlReports extends LitElement {
       <div class="head">
         <h2><ha-icon icon="mdi:chart-timeline-variant"></ha-icon>${this._t("rep.title")}</h2>
         <div class="ltek-buttons">
+          ${this._copied ? html`<span class="ltek-hint copied">${this._t("rep.copied")}</span>` : nothing}
+          <button class="ltek-btn" title=${this._t("rep.export_hint")} ?disabled=${!history?.runs.length} @click=${() => this._export()}>
+            <ha-icon icon="mdi:download"></ha-icon> ${this._t("rep.export")}
+          </button>
           <button class="ltek-btn" @click=${() => this._load()}>
             <ha-icon icon="mdi:refresh"></ha-icon> ${this._t("rep.refresh")}
           </button>
@@ -209,6 +245,11 @@ export class EasyAvControlReports extends LitElement {
         <span class="ltek-badge ${RESULT_BADGE[run.result] ?? ""}">${this._t(`rep.result_${run.result}`)}</span>
         <ha-icon class="ltek-act" icon=${open ? "mdi:chevron-up" : "mdi:chevron-down"}></ha-icon>
       </button>
+      ${open && run.id
+        ? html`<button class="ltek-btn export-run" @click=${() => this._export(run.id)}>
+            <ha-icon icon="mdi:download"></ha-icon> ${this._t("rep.export_run")}
+          </button>`
+        : nothing}
       ${open ? this._renderPhases(run) : nothing}
     </div>`;
   }
@@ -447,6 +488,14 @@ export class EasyAvControlReports extends LitElement {
       .ltek-badge.err {
         color: var(--ltek-c-error);
         border-color: var(--ltek-c-error);
+      }
+      .copied {
+        margin: 0;
+        color: var(--ltek-c-success);
+      }
+      .export-run {
+        align-self: flex-start;
+        margin: var(--ltek-sp-2) 0 0;
       }
       .phases {
         display: flex;

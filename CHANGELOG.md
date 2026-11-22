@@ -1,5 +1,28 @@
 # Changelog
 
+## v2026.11.22.18
+
+**Fixed**
+- **A device that was unreachable for a moment was not turned on.** When its power entity was unavailable at
+  the instant Easy AV Control got to it (the integration had just lost its connection, or was reloading), the
+  turn-on was skipped with a warning. Now it waits for the entity to come back, up to the device's connection
+  timeout (30 s without one); reloads its integration once if it takes over 10 s; and turns it on once it has
+  stayed reachable for 2 s. Its measured time starts after that wait.
+
+**Added**
+- **Export** on the Reports page: a JSON report to download (and copied to the clipboard): the runs, each with
+  its **trace**, the device times, the rooms as configured, the profiles' entities' states now, and the versions
+  of Home Assistant, Easy AV Control and every integration involved. An opened run has its own export.
+- **Run traces** for the last 30 runs: in order and timed, what the run was busy with, every service call with
+  its result and duration, every state change of the room's entities (device, status, outlets, remotes,
+  connection and picture checks) with whether the integration reported the entity available, waits for an
+  unreachable device, reloads and warnings; and every such entity's state and attributes at the start and end.
+- **Startup** and **Shutdown** buttons beside an activity's name in the panel. Startup must be held for 3
+  seconds and runs the activity as saved; Shutdown runs on a tap.
+
+**Changed**
+- "Start" / "Stop" are **Startup** / **Shutdown** in the Reports page and the Flow.
+
 ## v2026.11.22.17
 
 **Added**
