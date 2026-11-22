@@ -80,3 +80,27 @@ monitor_action:
       example: "projector"
       selector:
         text:
+
+problem_action:
+  fields:
+    room:
+      required: true
+      example: "theater"
+      selector:
+        text:
+    problem:
+      required: true
+      selector:
+        select:
+          options: [on_unexpectedly, device_lost, picture_lost, left_on, device_error]
+    action:
+      required: true
+      example: "turn_off"
+      selector:
+        select:
+          options: [turn_off, turn_on, keep_on, shutdown, dismiss]
+    device:
+      required: false
+      example: "projector"
+      selector:
+        text:

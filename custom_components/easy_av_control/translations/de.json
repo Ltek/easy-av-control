@@ -186,8 +186,30 @@
       }
     },
     "monitor_action": {
-      "name": "Monitor-Aktion",
+      "name": "Monitor-Aktion (alter Name der Problem-Aktion)",
       "description": "Sagt Easy AV Control, was mit einem Problem des Monitors geschehen soll: ausschalten, einschalten, anlassen, herunterfahren oder verwerfen.",
+      "fields": {
+        "room": {
+          "name": "Raum",
+          "description": "Die ID des Raums."
+        },
+        "problem": {
+          "name": "Problem",
+          "description": "Die Art des Problems."
+        },
+        "action": {
+          "name": "Aktion",
+          "description": "Was geschehen soll: turn_off, turn_on, keep_on, shutdown oder dismiss; jedes Problem nennt seine im Attribut actions seines Sensors."
+        },
+        "device": {
+          "name": "Gerät",
+          "description": "Nur dieses Gerät (seine ID im Raum); ohne: jedes Gerät mit dem Problem."
+        }
+      }
+    },
+    "problem_action": {
+      "name": "Problem-Aktion",
+      "description": "Sagt Easy AV Control, was mit einem Watchdog- oder Monitoring-Problem geschehen soll: ausschalten, einschalten, anlassen, herunterfahren oder verwerfen.",
       "fields": {
         "room": {
           "name": "Raum",

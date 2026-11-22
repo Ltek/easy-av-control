@@ -186,8 +186,30 @@
       }
     },
     "monitor_action": {
-      "name": "Monitor action",
+      "name": "Monitor action (old name of Problem action)",
       "description": "Tells Easy AV Control what to do about a problem the monitor found: turn off, turn on, keep on, shut down or dismiss.",
+      "fields": {
+        "room": {
+          "name": "Room",
+          "description": "The room's ID."
+        },
+        "problem": {
+          "name": "Problem",
+          "description": "The problem's kind."
+        },
+        "action": {
+          "name": "Action",
+          "description": "What to do: turn_off, turn_on, keep_on, shutdown or dismiss; each problem lists its own in its sensor's actions attribute."
+        },
+        "device": {
+          "name": "Device",
+          "description": "Only this device (its ID in the room); without it, every device with the problem."
+        }
+      }
+    },
+    "problem_action": {
+      "name": "Problem action",
+      "description": "Tells Easy AV Control what to do about a Watchdog or Monitoring problem: turn off, turn on, keep on, shut down or dismiss.",
       "fields": {
         "room": {
           "name": "Room",

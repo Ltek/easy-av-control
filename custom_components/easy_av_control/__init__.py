@@ -45,6 +45,7 @@ from .const import (
     PANEL_FILENAME,
     PROBLEMS,
     SERVICE_MONITOR_ACTION,
+    SERVICE_PROBLEM_ACTION,
     SERVICE_RELOAD,
     SERVICE_SEND_COMMAND,
     SERVICE_START_ACTIVITY,
@@ -173,6 +174,7 @@ def _register_services(hass: HomeAssistant) -> None:
         except ValueError as err:
             raise ServiceValidationError(str(err)) from err
 
+    hass.services.async_register(DOMAIN, SERVICE_PROBLEM_ACTION, handle_monitor_action, schema=_MONITOR_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_MONITOR_ACTION, handle_monitor_action, schema=_MONITOR_SCHEMA)
 
 

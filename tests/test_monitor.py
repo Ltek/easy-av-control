@@ -66,7 +66,7 @@ async def test_a_device_on_while_the_room_is_idle(hass: HomeAssistant, devices: 
 
     # The button tells the integration to turn it off
     await hass.services.async_call(
-        "easy_av_control", "monitor_action", {"room": "wz", "problem": "on_unexpectedly", "action": "turn_off"}, blocking=True
+        "easy_av_control", "problem_action", {"room": "wz", "problem": "on_unexpectedly", "action": "turn_off"}, blocking=True
     )
     assert ("homeassistant.turn_off", (BEAMER,)) in devices.names()
     await monitor.async_tick()
@@ -185,5 +185,20 @@ def test_the_flow_shows_what_is_watched(hass: HomeAssistant) -> None:
     room = validate_config(copy.deepcopy(data))["rooms"]["wz"]
     rows = plan_monitor(hass, room, "tv")["rows"]
     kinds = [r["kind"] for r in rows]
-    assert kinds[:4] == ["state", "monitor_lost", "monitor_idle", "monitor_error"]
-    assert [r["device"] for r in rows if r["kind"] == "monitor_watch"] == ["onkyo", "beamer"]
+    assert kinds == ["state", "monitor_lost", "monitor_idle"]
+
+
+async def test_a_check_not_kept_is_not_watched_while_active(hass: HomeAssistant, devices: Devices) -> None:
+    data = _data(checks=[{"device": "beamer", "entity_id": "sensor.signal", "state": "ok", "keep_checking": False}])
+    coordinator, monitor, clock = await _monitor(hass, devices, data)
+    hass.states.async_set("sensor.signal", "ok")
+    for e in (ONKYO, BEAMER, VU):
+        hass.states.async_set(e, "on")
+    await coordinator.async_start_activity("wz", "tv")
+    hass.states.async_set("sensor.signal", "none")
+    await monitor.async_tick()
+    clock.t += 120
+    await monitor.async_tick()
+    assert not monitor.room_problems("wz", "picture_lost")
+    state = hass.states.get("binary_sensor.av_wohnzimmer_device_on_unexpectedly")
+    assert state.attributes["scope"] == "watchdog"

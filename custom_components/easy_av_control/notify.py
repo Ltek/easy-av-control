@@ -40,6 +40,7 @@ from .const import (
     PROBLEM_LEFT_ON,
     PROBLEM_ON_UNEXPECTEDLY,
     PROBLEM_PICTURE_LOST,
+    PROBLEM_SCOPE,
     PROBLEMS,
 )
 from .model import problem_unique_id
@@ -225,7 +226,7 @@ def build(hass: HomeAssistant, room_id: str, room_name: str, kind: str, devices:
         inputs[f"action_button_{i}_label"] = BUTTON_LABELS[action]
         inputs[f"action_button_{i}_action"] = [
             {
-                "action": f"{DOMAIN}.monitor_action",
+                "action": f"{DOMAIN}.problem_action",
                 "data": {"room": room_id, "problem": kind, "action": action},
             }
         ]
@@ -274,6 +275,7 @@ def offers_payload(hass: HomeAssistant) -> dict[str, Any]:
                         "room": room_id,
                         "room_name": room.get(CONF_NAME) or room_id,
                         "kind": kind,
+                        "scope": PROBLEM_SCOPE[kind],
                         "title": OFFERS[kind]["title"].format(room=room.get(CONF_NAME) or room_id),
                         "text": OFFERS[kind]["text"],
                         "sensor": sensor,

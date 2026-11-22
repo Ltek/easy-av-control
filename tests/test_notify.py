@@ -33,7 +33,7 @@ async def test_an_offer_calls_the_integration(hass: HomeAssistant, devices: Devi
     assert inputs["include_action_buttons"] == ["enable_action_button_1", "enable_action_button_2"]
     assert inputs["action_button_1_label"] == "Turn off"
     assert inputs["action_button_1_action"] == [
-        {"action": "easy_av_control.monitor_action", "data": {"room": "wz", "problem": "on_unexpectedly", "action": "turn_off"}}
+        {"action": "easy_av_control.problem_action", "data": {"room": "wz", "problem": "on_unexpectedly", "action": "turn_off"}}
     ]
     assert inputs["action_button_2_action"][0]["data"]["action"] == "keep_on"
 

@@ -145,6 +145,18 @@ PROBLEM_ACTIONS: Final = {
     PROBLEM_DEVICE_ERROR: [ACTION_TURN_OFF, ACTION_DISMISS],
 }
 EVENT_MONITOR: Final = "easy_av_control_monitor"
+# Watchdog: the room, outside any activity. Monitoring: an activity while it is active
+SCOPE_WATCHDOG: Final = "watchdog"
+SCOPE_MONITORING: Final = "monitoring"
+PROBLEM_SCOPE: Final = {
+    PROBLEM_ON_UNEXPECTEDLY: SCOPE_WATCHDOG,
+    PROBLEM_DEVICE_ERROR: SCOPE_WATCHDOG,
+    PROBLEM_DEVICE_LOST: SCOPE_MONITORING,
+    PROBLEM_PICTURE_LOST: SCOPE_MONITORING,
+    PROBLEM_LEFT_ON: SCOPE_MONITORING,
+}
+# A check: also checked while the activity is active (Monitoring), not only during Startup
+CONF_KEEP_CHECKING: Final = "keep_checking"
 FAILURE_WARN: Final = "warn"
 FAILURE_STOP: Final = "stop"
 FAILURE_RETRY: Final = "retry"
@@ -190,6 +202,8 @@ SERVICE_START_ACTIVITY: Final = "start_activity"
 SERVICE_STOP_ACTIVITY: Final = "stop_activity"
 SERVICE_TOGGLE_ACTIVITY: Final = "toggle_activity"
 SERVICE_RELOAD: Final = "reload"
+SERVICE_PROBLEM_ACTION: Final = "problem_action"
+# The first name of problem_action (2026.11.22.21), still accepted
 SERVICE_MONITOR_ACTION: Final = "monitor_action"
 ATTR_PROBLEM: Final = "problem"
 ATTR_ACTION: Final = "action"

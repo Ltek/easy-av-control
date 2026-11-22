@@ -15,6 +15,7 @@ type Offer = {
   room: string;
   room_name: string;
   kind: string;
+  scope: "watchdog" | "monitoring";
   title: string;
   text: string;
   sensor: string;
@@ -160,7 +161,13 @@ export class EasyAvControlNotifications extends LitElement {
       </div>
       ${rooms.map(
         (room) => html`<h3>${data.offers.find((o) => o.room === room)?.room_name}</h3>
-          <div class="ltek-list">${data.offers.filter((o) => o.room === room).map((o) => this._row(o))}</div>`,
+          ${(["watchdog", "monitoring"] as const).map((scope) => {
+            const offers = data.offers.filter((o) => o.room === room && o.scope === scope);
+            return offers.length
+              ? html`<h4>${this._t(`ntf.scope_${scope}`)}</h4>
+                  <div class="ltek-list">${offers.map((o) => this._row(o))}</div>`
+              : nothing;
+          })}`,
       )}
     `;
   }
@@ -225,6 +232,14 @@ export class EasyAvControlNotifications extends LitElement {
         margin: var(--ltek-sp-3) 0 0;
         font-size: var(--ltek-fs-group);
         font-weight: var(--ltek-fw-semibold);
+      }
+      h4 {
+        margin: var(--ltek-sp-2) 0 0;
+        font-size: var(--ltek-fs-small);
+        font-weight: var(--ltek-fw-semibold);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--secondary-text-color);
       }
       .ltek-btn {
         display: inline-flex;

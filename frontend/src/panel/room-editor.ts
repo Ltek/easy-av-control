@@ -60,7 +60,7 @@ import { t } from "./strings";
 type Tab = "devices" | "activities" | "yaml";
 
 /** What the editor shows: a list (the tab) or one device or activity. */
-type View = { kind: "list" } | { kind: "device"; id: string } | { kind: "activity"; id: string };
+type View = { kind: "list" } | { kind: "device"; id: string } | { kind: "activity"; id: string } | { kind: "watchdog" };
 
 /** "on, idle" -> ["on", "idle"]; one state stays a plain string. */
 function splitStates(value: string | undefined): string | string[] | undefined {
@@ -100,7 +100,6 @@ const DEVICE_SECTIONS: [string, string][] = [
   ["section_power", "mdi:power-socket-eu"],
   ["section_delays", "mdi:timer-sand"],
   ["section_ready", "mdi:lan-connect"],
-  ["section_monitor", "mdi:eye-outline"],
 ];
 const DEVICE_HINTS: Record<string, string> = {
   section_device: "hint_device",
@@ -151,7 +150,7 @@ export class EasyAvControlRoomEditor extends LitElement {
   /** All profiles (profiles/list), for the profile picker; given by the panel */
   declare profiles: ProfileView[];
   /** From the menu: open this activity, at its Flow when ``flow``; ``n`` makes each click a change */
-  declare jump?: { activity?: string; flow: boolean; n: number };
+  declare jump?: { activity?: string; flow: boolean; watchdog?: boolean; n: number };
   /** Devices whose outlet is ticked but not picked yet */
   declare _powerOn: Set<string>;
   /** The Flow row being edited in place: its key (flow-view rowKey) and the panel it stands for */
@@ -210,7 +209,11 @@ export class EasyAvControlRoomEditor extends LitElement {
       this._draftStartedBy = undefined;
     }
     const jump = this.jump;
-    if (changed.has("jump") && jump && !jump.activity) {
+    if (changed.has("jump") && jump?.watchdog) {
+      this._view = { kind: "watchdog" };
+      this._notice = undefined;
+      window.scrollTo({ top: 0 });
+    } else if (changed.has("jump") && jump && !jump.activity) {
       this._view = { kind: "list" };
       this._notice = undefined;
     } else if (changed.has("jump") && jump?.activity && this.room?.activities?.[jump.activity]) {
@@ -259,6 +262,9 @@ export class EasyAvControlRoomEditor extends LitElement {
     }
     if (view.kind === "activity" && this.room.activities?.[view.id]) {
       return this._renderActivity(view.id, this.room.activities[view.id]);
+    }
+    if (view.kind === "watchdog") {
+      return this._renderWatchdog();
     }
     const activityOptions = [
       { value: "__last", label: this._t("default_last") },
@@ -422,7 +428,7 @@ export class EasyAvControlRoomEditor extends LitElement {
   /** The page a panel belongs to: the room's own settings, or one device or activity. */
   private _pageKey(): string {
     const view = this._view;
-    return view.kind === "list" ? `list:${this.roomId}` : `${view.kind}:${this.roomId}:${view.id}`;
+    return view.kind === "list" || view.kind === "watchdog" ? `${view.kind}:${this.roomId}` : `${view.kind}:${this.roomId}:${view.id}`;
   }
 
   /** A titled panel with a short explanation. */
@@ -668,6 +674,64 @@ export class EasyAvControlRoomEditor extends LitElement {
       default:
         return html``;
     }
+  }
+
+  /** The room's Watchdog: outside any activity. Each device's watch, and what is wrong now. */
+  private _renderWatchdog(): TemplateResult {
+    const sensors = Object.values(this.hass.states).filter(
+      (s) => s?.entity_id.startsWith("binary_sensor.") && s.attributes.room === this.roomId && s.attributes.scope === "watchdog",
+    );
+    const act = (problem: string, action: string) =>
+      this.hass.callService("easy_av_control", "problem_action", { room: this.roomId, problem, action });
+    return html`<div class="detail-head">
+        <button class="back" @click=${() => this._show({ kind: "list" })}>
+          <ha-icon icon="mdi:arrow-left"></ha-icon><span>${this.room.name ?? this.roomId}</span>
+        </button>
+      </div>
+      <div class="title-row"><h2>${this._t("watchdog")}</h2></div>
+      <p class="ltek-hint">${this._t("watchdog_hint")}</p>
+      ${sensors.length
+        ? html`<div class="ltek-list watchdog-now">
+            ${sensors.map((s) => {
+              const on = s!.state === "on";
+              const problem = String(s!.attributes.problem);
+              return html`<div class="ltek-item ordered-row">
+                <ha-icon class="lead ${on ? "bad" : "good"}" icon=${on ? "mdi:alert" : "mdi:check-circle-outline"}></ha-icon>
+                <span class="ltek-item-text">
+                  <span class="ltek-name">${this._t(`problem.${problem}`)}</span>
+                  <span class="ltek-subline">${on ? ((s!.attributes.names as string[] | undefined) ?? []).join(", ") : this._t("watchdog_ok")}</span>
+                </span>
+                ${on
+                  ? ((s!.attributes.actions as string[] | undefined) ?? []).map(
+                      (a) => html`<button class="ltek-btn" @click=${() => act(problem, a)}>${this._t(`action.${a}`)}</button>`,
+                    )
+                  : nothing}
+              </div>`;
+            })}
+          </div>`
+        : html`<p class="ltek-hint">${this._t("watchdog_save_first")}</p>`}
+      ${this._card(
+        this._t("watchdog_devices"),
+        this._t("watchdog_devices_hint"),
+        html`<div class="ltek-list">
+          ${Object.entries(this.room.devices ?? {}).map(([id, device]) => {
+            const detect = this._detectFor(device);
+            return html`<div class="step">
+              <div class="step-head"><span class="title">${device.name ?? device.entity_id}</span></div>
+              ${detect && !detect.state
+                ? html`<p class="ltek-hint">${this._t("watchdog_no_status")}</p>`
+                : this._deviceSection(id, device, "section_monitor")}
+            </div>`;
+          })}
+        </div>`,
+        "mdi:television-guide",
+      )}
+      <p class="ltek-hint">
+        ${this._t("watchdog_error")}
+        <button class="link" @click=${() => this.dispatchEvent(new CustomEvent("open-page", { detail: { page: "notifications" } }))}>
+          ${this._t("watchdog_notify")}
+        </button>
+      </p>`;
   }
 
   /** The activity's monitor while it is active: lost, picture, auto-off. */
@@ -1787,6 +1851,14 @@ export class EasyAvControlRoomEditor extends LitElement {
               update({ timeout: v.timeout, on_failure: v.on_failure === "stop" ? "stop" : undefined });
             }}
           ></ltek-form>
+          <label class="check">
+            <input
+              type="checkbox"
+              .checked=${check.keep_checking !== false}
+              @change=${(ev: Event) => update({ keep_checking: (ev.target as HTMLInputElement).checked ? undefined : false })}
+            />
+            ${this._t("check_keep")}
+          </label>
         </div>`;
       })}
     </div>`;
@@ -2517,6 +2589,15 @@ export class EasyAvControlRoomEditor extends LitElement {
       color: var(--ltek-c-accent);
       cursor: pointer;
       font: inherit;
+    }
+    .ltek-item .lead.good {
+      color: var(--success-color, #43a047);
+    }
+    .watchdog-now {
+      margin-bottom: 8px;
+    }
+    .ltek-item .lead.bad {
+      color: var(--error-color, #db4437);
     }
     .head-acts {
       display: flex;

@@ -187,7 +187,7 @@ await settle(1200);
 await page.locator('easy-av-control-flow [slot="add-start"] .inline-add').scrollIntoViewIfNeeded();
 await shotBoth('activity-started-by');
 // While active: the monitor
-await page.locator('easy-av-control-flow .modes button', { hasText: 'While active' }).click();
+await page.locator('easy-av-control-flow .modes button', { hasText: 'Monitoring' }).click();
 await settle(1500);
 await page.locator('easy-av-control-flow [slot="add-monitor"] button.ltek-add', { hasText: 'Auto-off' }).click();
 await settle(1500);
@@ -213,6 +213,10 @@ await page.locator('easy-av-control-room-editor summary', { hasText: 'Settings i
 await settle(1200);
 await page.locator('easy-av-control-room-editor .card-divider').scrollIntoViewIfNeeded();
 await shotBoth('activity-card');
+// The room's Watchdog page, from the menu
+await page.locator('easy-av-control-panel .nav-activity button', { hasText: 'Watchdog' }).first().click();
+await settle(2000);
+await shotBoth('watchdog');
 
 // Profiles
 await page.getByRole('button', { name: 'Profiles' }).last().click();

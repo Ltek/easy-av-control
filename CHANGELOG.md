@@ -1,5 +1,18 @@
 # Changelog
 
+## v2026.11.22.24
+
+**Changed**
+- One word per idea: **Checks** run once during Startup; **Monitoring** watches an activity while it is active;
+  **Watchdog** watches the room outside its activities.
+- **Watchdog** is a page per room in the menu, under its activities: what is wrong now (with the actions), and
+  each device's watch setting in one list. The device page no longer has a Monitor panel.
+- The Flow's "While active" view is **Monitoring**, and shows only the activity's own items. Picture lost is now
+  the activity's **Checks** kept running: each check has **Keep checking while active** (on by default).
+- `easy_av_control.monitor_action` is now **`easy_av_control.problem_action`**; the old name still works. Alerts
+  made from the Notifications page call the new name. Each problem sensor has a `scope` attribute (watchdog or
+  monitoring), and the Notifications page groups its offers by it.
+
 ## v2026.11.22.23
 
 **Added**

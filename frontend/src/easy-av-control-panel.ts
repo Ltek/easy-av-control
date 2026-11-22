@@ -21,7 +21,10 @@ import type { HomeAssistant } from "./types";
 
 type Page = "room" | "profiles" | "detect" | "guide" | "reports" | "notifications";
 /** Tells the room editor what to show: an activity (at its Flow), or with no activity the room's own page */
-type Jump = { activity?: string; flow: boolean; n: number };
+/** The menu entry of a room's Watchdog page, where an open activity is marked */
+const WATCHDOG = "__watchdog";
+
+type Jump = { activity?: string; flow: boolean; watchdog?: boolean; n: number };
 
 interface Missing {
   room: string;
@@ -375,7 +378,13 @@ export class EasyAvControlPanel extends LitElement {
                 <ha-icon icon="mdi:sitemap-outline"></ha-icon>
               </button>
             </div>`,
-          )}`,
+          )}
+          <div class="nav-activity ${this._page === "room" && id === selected && this._openActivity === WATCHDOG ? "active" : ""}">
+            <button class="nav-act-name" @click=${() => this._goWatchdog(id)}>
+              <ha-icon icon="mdi:dog-side"></ha-icon>
+              <span>${this._t("watchdog")}</span>
+            </button>
+          </div>`,
         )}
         <div class="nav-title library">${this._t("setup")}</div>
         <button class="room ${this._page === "detect" ? "active" : ""}" @click=${() => (this._page = "detect")}>
@@ -467,8 +476,9 @@ export class EasyAvControlPanel extends LitElement {
                 .jump=${this._jump}
                 @view-changed=${(ev: CustomEvent<{ view: { kind: string; id?: string } }>) => {
                   const view = ev.detail.view;
-                  this._openActivity = view.kind === "activity" ? view.id : undefined;
+                  this._openActivity = view.kind === "activity" ? view.id : view.kind === "watchdog" ? WATCHDOG : undefined;
                 }}
+                @open-page=${(ev: CustomEvent<{ page: Page }>) => (this._page = ev.detail.page)}
               ></easy-av-control-room-editor>`
           : html`<div class="empty">${this._t("no_rooms")}</div>`}
       </main>
@@ -497,6 +507,13 @@ export class EasyAvControlPanel extends LitElement {
     } catch {
       this._sidebar = !visible;
     }
+  }
+
+  /** A room's Watchdog page from the menu. */
+  private _goWatchdog(room: string): void {
+    this._selected = room;
+    this._page = "room";
+    this._jump = { watchdog: true, flow: false, n: (this._jump?.n ?? 0) + 1 };
   }
 
   /** Open an activity of a room from the menu, at its Flow when ``flow``. */

@@ -481,39 +481,48 @@ The short version is below; [ACTIVITY_FLOW.md](ACTIVITY_FLOW.md) shows the whole
 
 For the example above: VU+, projector and Onkyo off → room idle → multimedia outlet off → 180 s later the projector outlet off.
 
-### Monitor
+### Watchdog and Monitoring
 
-Between startups and shutdowns the monitor looks at the devices every few seconds. Each kind of problem is a binary
-sensor per room, on while it lasts, with the devices, since when, what is planned and what can be done as attributes:
+Every few seconds Easy AV Control looks at the devices. Each kind of problem is a binary sensor per room, on while
+it lasts, with the devices, since when, what is planned, its `scope` and the actions it allows as attributes.
+
+**Watchdog** is the room outside its activities: its own page in the panel's menu, under the room's activities.
 
 | Sensor (`binary_sensor.av_<room>_…`) | On when | Set in |
 |---|---|---|
-| `device_on_unexpectedly` | A device is on while nothing uses it (the room is idle, or the running activity doesn't include it), after its grace time (2 min) | The device's **Monitor** panel: notify (default), notify then turn off after a time, or don't watch |
-| `device_lost` | A device of the active activity is off or unreachable (60 s) | The activity's Flow, **While active** |
-| `picture_lost` | A check of the active activity (the picture) fails (60 s) | The same |
-| `left_on` | Auto-off: none of the active activity's media players has played for a time (off by default). It then shuts down after a warning time (5 min) | The same |
+| `device_on_unexpectedly` | A device is on while nothing uses it (the room is idle, or the running activity doesn't include it), after its grace time (2 min) | Watchdog: per device, notify (default), notify then turn off after a time, or don't watch |
 | `device_error` | A device reports an error state | Always |
+
+**Monitoring** is an activity while it is active: the **Monitoring** view of its Flow.
+
+| Sensor | On when | Default |
+|---|---|---|
+| `device_lost` | A device of the activity is off or unreachable | After 60 s |
+| `picture_lost` | One of its **Checks** fails again (each check has *Keep checking while active*, on by default) | After 60 s |
+| `left_on` | Auto-off: none of its media players has played for a time; it shuts down after a warning | Off; 30 min + 5 min when turned on |
+
+**Checks** stay what they were: run once during Startup, after the devices are on.
 
 Startups and shutdowns never raise a problem, nor do devices whose outlet or later turn-off is pending.
 
-What to do about a problem is always done by the integration, through the `easy_av_control.monitor_action` action:
+What to do about a problem is always done by the integration, through the `easy_av_control.problem_action` action:
 
 ```yaml
-action: easy_av_control.monitor_action
+action: easy_av_control.problem_action
 data: {room: theater, problem: on_unexpectedly, action: turn_off}   # device: optional, else every device with it
 ```
 
-Each problem lists its actions in the sensor's `actions` attribute: `turn_off` and `keep_on` (on unexpectedly),
+Each problem lists its actions in its sensor's `actions` attribute: `turn_off` and `keep_on` (on unexpectedly),
 `turn_on`, `shutdown` and `dismiss` (lost), `keep_on` and `shutdown` (left on), `turn_off` and `dismiss` (error).
 `keep_on` and `dismiss` silence the problem until its cause is gone; `keep_on` on auto-off starts its idle time
-again. Every change also fires the `easy_av_control_monitor` event.
+again. Every change also fires the `easy_av_control_monitor` event. `monitor_action`, its first name, still works.
 
 ### Notifications
 
-**Notifications** in the panel's menu offers one ready-made alert per room and monitor problem. **Create** makes a
+**Notifications** in the panel's menu offers one ready-made alert per room and problem, under Watchdog and Monitoring. **Create** makes a
 normal Home Assistant automation from the [Smart Repeating Alerts](https://github.com/Ltek/smart-repeating-alerts)
 blueprint, with the phones you tick: it notifies when the problem's sensor turns on, and clears the notification when
-it turns off. Its buttons (Turn off, Keep on, Shut down …) only call `easy_av_control.monitor_action`; Easy AV Control
+it turns off. Its buttons (Turn off, Keep on, Shut down …) only call `easy_av_control.problem_action`; Easy AV Control
 does what they ask. Edit it in Home Assistant's automation editor like any other; its traces are there too.
 
 The blueprint ships with Easy AV Control and is installed in `blueprints/automation/LTek/`, or updated when the file

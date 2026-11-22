@@ -1,4 +1,4 @@
-"""Monitor: what goes wrong between startups and shutdowns, as problems the integration acts on.
+"""Watchdog (the room, outside activities) and Monitoring (an activity while active): problems the integration acts on.
 
 Every few seconds the monitor looks at each room with the devices' status from their profiles:
 
@@ -48,6 +48,7 @@ from .const import (
     CONF_GRACE,
     CONF_IDLE_AFTER,
     CONF_IDLE_WARNING,
+    CONF_KEEP_CHECKING,
     CONF_LOST_AFTER,
     CONF_MODE,
     CONF_MONITOR,
@@ -66,6 +67,7 @@ from .const import (
     PROBLEM_LEFT_ON,
     PROBLEM_ON_UNEXPECTEDLY,
     PROBLEM_PICTURE_LOST,
+    PROBLEM_SCOPE,
     PROBLEMS,
     WATCH_NOTIFY,
     WATCH_OFF,
@@ -163,7 +165,7 @@ class Monitor:
         problems = self.room_problems(room_id, kind)
         room = self.coordinator.rooms.get(room_id, {})
         devices = room.get(CONF_DEVICES, {})
-        attrs: dict[str, Any] = {"actions": list(PROBLEM_ACTIONS[kind])}
+        attrs: dict[str, Any] = {"scope": PROBLEM_SCOPE[kind], "actions": list(PROBLEM_ACTIONS[kind])}
         named = [d for d in problems if d != ROOM and d in devices]
         if named:
             attrs["devices"] = named
@@ -253,6 +255,8 @@ class Monitor:
 
         if monitor[CONF_PICTURE_LOST_AFTER]:
             for check in activity.get(CONF_CHECKS) or []:
+                if not check.get(CONF_KEEP_CHECKING, True):
+                    continue
                 device = devices[check[CONF_DEVICE]]
                 source = check_source(self.hass, coordinator.profiles, device, check)
                 if source is not None and source[0].current(self.hass)[0] != GROUP_ON:

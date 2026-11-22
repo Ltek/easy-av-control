@@ -84,6 +84,7 @@ from .const import (
     CONF_ID,
     CONF_IDLE_AFTER,
     CONF_IDLE_WARNING,
+    CONF_KEEP_CHECKING,
     CONF_LOST_AFTER,
     CONF_MODE,
     CONF_MONITOR,
@@ -395,6 +396,7 @@ CHECK_SCHEMA = vol.Schema(
         vol.Optional(CONF_TIMEOUT): vol.All(vol.Coerce(float), vol.Range(min=1, max=3600)),
         vol.Optional(CONF_DEBOUNCE): _SECONDS,
         vol.Optional(CONF_ON_FAILURE): vol.In([FAILURE_WARN, FAILURE_STOP]),
+        vol.Optional(CONF_KEEP_CHECKING, default=True): cv.boolean,
     }
 )
 
