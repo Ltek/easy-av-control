@@ -13,12 +13,13 @@ import "./panel/guide";
 import { REPO, ltekChrome, ltekPanelScale, ltekTokens } from "./panel/ltek-styles";
 import "./panel/profiles";
 import "./panel/reports";
+import "./panel/notifications";
 import "./panel/room-editor";
 import { clean, slugify, sortedActivities, uniqueKey, type Room, type Rooms, type Sources } from "./panel/model";
 import { t } from "./panel/strings";
 import type { HomeAssistant } from "./types";
 
-type Page = "room" | "profiles" | "detect" | "guide" | "reports";
+type Page = "room" | "profiles" | "detect" | "guide" | "reports" | "notifications";
 /** Tells the room editor what to show: an activity (at its Flow), or with no activity the room's own page */
 type Jump = { activity?: string; flow: boolean; n: number };
 
@@ -386,6 +387,9 @@ export class EasyAvControlPanel extends LitElement {
         <button class="room ${this._page === "reports" ? "active" : ""}" @click=${() => (this._page = "reports")}>
           <ha-icon icon="mdi:chart-timeline-variant"></ha-icon> ${this._t("reports")}
         </button>
+        <button class="room ${this._page === "notifications" ? "active" : ""}" @click=${() => (this._page = "notifications")}>
+          <ha-icon icon="mdi:bell-ring-outline"></ha-icon> ${this._t("ntf.title")}
+        </button>
         <button class="room ${this._page === "guide" ? "active" : ""}" @click=${() => this._openGuide()}>
           <ha-icon icon="mdi:help-circle-outline"></ha-icon> ${this._t("guide")}
         </button>
@@ -416,6 +420,8 @@ export class EasyAvControlPanel extends LitElement {
             ></easy-av-control-guide>`
           : this._page === "reports"
           ? html`<easy-av-control-reports .hass=${this.hass}></easy-av-control-reports>`
+          : this._page === "notifications"
+          ? html`<easy-av-control-notifications .hass=${this.hass}></easy-av-control-notifications>`
           : this._page === "detect"
           ? html`<easy-av-control-detect
               .hass=${this.hass}

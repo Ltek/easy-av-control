@@ -133,6 +133,11 @@ await settle(800);
 await page.locator('easy-av-control-reports details[open] .ltek-item.group button.row').nth(1).click();
 await settle(600);
 await shotBoth('reports-devices');
+// Notifications: an offer per room and monitor problem
+await page.getByRole('button', { name: 'Notifications' }).last().click();
+await page.locator('easy-av-control-notifications .offer').first().waitFor({ timeout: 30000 });
+await settle(1200);
+await shotBoth('notifications');
 await page.locator('easy-av-control-panel nav button.room', { hasText: 'Living room' }).click();
 await settle(1000);
 await settle(800);

@@ -1,5 +1,17 @@
 # Changelog
 
+## v2026.11.22.22
+
+**Added**
+- **Notifications** page: one ready-made alert per room and monitor problem. **Create** makes a native Home
+  Assistant automation from the Smart Repeating Alerts blueprint for the phones you tick. It notifies when the
+  problem's sensor turns on and clears the notification when it turns off. Its buttons (Turn off, Keep on, Shut
+  down, Turn on, Dismiss, as the problem allows) only call `easy_av_control.monitor_action`: the integration does
+  what they ask. A device error repeats every hour; the others notify once.
+- The Smart Repeating Alerts blueprint (2026.11.13.44) ships with Easy AV Control. It is installed in
+  `blueprints/automation/LTek/` at startup, or updated when the file there is ours and older, the same way House
+  Modes & Alarm Center does it; another file at that path is never replaced.
+
 ## v2026.11.22.21
 
 **Added**

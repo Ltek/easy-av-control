@@ -20,7 +20,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import async_get_integration
 
-from . import history, sidebar, websocket
+from . import history, notify, sidebar, websocket
 from .card_resource import (
     async_register_card_resource,
     async_remove_card_resource,
@@ -91,6 +91,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     websocket.async_register(hass)
     sidebar.async_setup_ws(hass)
     history.async_setup_ws(hass)
+    notify.async_setup_ws(hass)
+    # The Smart Repeating Alerts blueprint the notifications use: installed, or updated when ours and older
+    hass.async_create_background_task(notify.async_sync_blueprint(hass), f"{DOMAIN} blueprint")
     await _async_register_frontend(hass)
     return True
 

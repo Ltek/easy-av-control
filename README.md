@@ -508,6 +508,18 @@ Each problem lists its actions in the sensor's `actions` attribute: `turn_off` a
 `keep_on` and `dismiss` silence the problem until its cause is gone; `keep_on` on auto-off starts its idle time
 again. Every change also fires the `easy_av_control_monitor` event.
 
+### Notifications
+
+**Notifications** in the panel's menu offers one ready-made alert per room and monitor problem. **Create** makes a
+normal Home Assistant automation from the [Smart Repeating Alerts](https://github.com/Ltek/smart-repeating-alerts)
+blueprint, with the phones you tick: it notifies when the problem's sensor turns on, and clears the notification when
+it turns off. Its buttons (Turn off, Keep on, Shut down …) only call `easy_av_control.monitor_action`; Easy AV Control
+does what they ask. Edit it in Home Assistant's automation editor like any other; its traces are there too.
+
+The blueprint ships with Easy AV Control and is installed in `blueprints/automation/LTek/`, or updated when the file
+there is Smart Repeating Alerts and older. House Modes & Alarm Center ships the same file the same way, so the two
+never downgrade each other; a file there that isn't Smart Repeating Alerts is left alone.
+
 ### Commands while something runs
 
 A new command cancels whatever runs in the room: a stop during a long start takes effect immediately, and a stop from the `error` state switches off what the failed start had already powered. Sending the command that is already running just waits for it.

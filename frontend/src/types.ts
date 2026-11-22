@@ -38,6 +38,7 @@ export interface HomeAssistant {
     data?: Record<string, unknown>,
   ): Promise<unknown>;
   callWS<T>(message: Record<string, unknown>): Promise<T>;
+  callApi?<T>(method: string, path: string, data?: Record<string, unknown>): Promise<T>;
 }
 
 export interface CardConfig {
