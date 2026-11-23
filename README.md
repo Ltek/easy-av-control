@@ -194,6 +194,11 @@ Assistant. The built remote control card and panel are included.
 
 ### Configuration panel
 
+**Quick Start** (top of Setup in the panel's menu, and the first page while there is no room): what is set up, as
+chips, and the steps left, each done / to apply / for you / optional. It names your own automations that also switch
+the rooms' AV devices (an old "system on" automation would fight with Easy AV Control), checks that the remote control
+card is on a dashboard, and **Apply** installs the notifications blueprint.
+
 The panel edits everything the [configuration](#configuration) below describes:
 
 - **Devices** — entity and power outlet with Home Assistant's entity picker; boot time, wait times and readiness check as fields; own `commands` in a YAML field. Renaming a device ID updates every reference; a device that an activity still uses cannot be deleted.
