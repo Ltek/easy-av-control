@@ -1,5 +1,16 @@
 # Changelog
 
+## v2026.11.23.29
+
+**Added**
+- **Quick Start**, as in House Modes & Alarm Center: at the top of Setup in the menu, and the first page while
+  there is no room. Chips for what is set up (rooms, devices, activities, runs, alerts), then **Your setup**: a
+  room, your AV devices (with what Detect integrations still finds), each device's status, an activity, **no other
+  automation switching the AV devices** (it names yours that do, each opening in a new tab), a startup that worked,
+  checks, Harmony Started by, auto-off, the notifications blueprint, notifications, the card on a dashboard (checked
+  in the browser), and the editor in the sidebar. Each step is done, to apply, for you or optional, with a link to
+  the page for it. **Apply** does the automatic ones and changes nothing that exists.
+
 ## v2026.11.23.28
 
 **Changed**

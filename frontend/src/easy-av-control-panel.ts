@@ -14,14 +14,15 @@ import { REPO, ltekChrome, ltekPanelScale, ltekTokens } from "./panel/ltek-style
 import "./panel/profiles";
 import "./panel/reports";
 import "./panel/notifications";
+import "./panel/quick-start";
 import "./panel/room-editor";
 import { clean, slugify, sortedActivities, uniqueKey, type Room, type Rooms, type Sources } from "./panel/model";
 import { t } from "./panel/strings";
 import type { HomeAssistant } from "./types";
 
-type Page = "room" | "profiles" | "detect" | "guide" | "reports" | "notifications";
+type Page = "room" | "profiles" | "detect" | "guide" | "reports" | "notifications" | "quickstart";
 /** Tells the room editor what to show: an activity (at its Flow), or with no activity the room's own page */
-type Jump = { activity?: string; flow: boolean; watchdog?: boolean; n: number };
+type Jump = { activity?: string; flow: boolean; tab?: string; n: number };
 
 interface Missing {
   room: string;
@@ -379,6 +380,9 @@ export class EasyAvControlPanel extends LitElement {
 `,
         )}
         <div class="nav-title library">${this._t("setup")}</div>
+        <button class="room ${this._page === "quickstart" ? "active" : ""}" @click=${() => (this._page = "quickstart")}>
+          <ha-icon icon="mdi:rocket-launch-outline"></ha-icon> ${this._t("qs.title")}
+        </button>
         <button class="room ${this._page === "detect" ? "active" : ""}" @click=${() => (this._page = "detect")}>
           <ha-icon icon="mdi:auto-fix"></ha-icon> ${this._t("detect")}
         </button>
@@ -414,7 +418,12 @@ export class EasyAvControlPanel extends LitElement {
       </nav>
       <main>
         ${this._renderBanner()}
-        ${this._page === "guide"
+        ${this._page === "quickstart" || (this._page === "room" && !rooms.length)
+          ? html`<easy-av-control-quick-start
+              .hass=${this.hass}
+              @open-page=${(ev: CustomEvent<{ page: string }>) => this._openLink(ev.detail.page)}
+            ></easy-av-control-quick-start>`
+          : this._page === "guide"
           ? html`<easy-av-control-guide
               .language=${this.hass.language}
               @close=${() => (this._page = this._back)}
@@ -475,6 +484,24 @@ export class EasyAvControlPanel extends LitElement {
           : html`<div class="empty">${this._t("no_rooms")}</div>`}
       </main>
     </div>`;
+  }
+
+  /** A Quick Start link: a page of the menu, or a tab of the first (selected) room. */
+  private _openLink(link: string): void {
+    if (link === "rooms" || link === "activities") {
+      const room = this._selected ?? Object.keys(this._rooms ?? {})[0];
+      if (!room) {
+        this._adding = true;
+        this._page = "room";
+        return;
+      }
+      this._selected = room;
+      this._page = "room";
+      this._openActivity = undefined;
+      this._jump = { flow: false, tab: link === "activities" ? "activities" : "devices", n: (this._jump?.n ?? 0) + 1 };
+      return;
+    }
+    this._page = link as Page;
   }
 
   /** A room from the menu: its own page, never an activity or device left open in it. */

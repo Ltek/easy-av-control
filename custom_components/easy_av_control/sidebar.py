@@ -60,6 +60,15 @@ async def async_register_panel(hass: HomeAssistant, module_url: str | None = Non
     )
 
 
+async def async_set_sidebar(hass: HomeAssistant, visible: bool) -> None:
+    """Show or hide the editor in Home Assistant's sidebar."""
+    ui = await _async_ui(hass)
+    if visible != ui["data"].get("sidebar", True):
+        ui["data"]["sidebar"] = visible
+        await ui["store"].async_save(ui["data"])
+        await async_register_panel(hass)
+
+
 async def async_flow_details(hass: HomeAssistant) -> list[str]:
     details = (await _async_ui(hass))["data"].get("flow_details")
     return list(DEFAULT_FLOW_DETAILS if details is None else details)
@@ -108,9 +117,6 @@ async def ws_sidebar(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
 ) -> None:
     """Whether the panel is in the sidebar; with ``visible``, change it first."""
-    ui = await _async_ui(hass)
-    if "visible" in msg and msg["visible"] != ui["data"].get("sidebar", True):
-        ui["data"]["sidebar"] = msg["visible"]
-        await ui["store"].async_save(ui["data"])
-        await async_register_panel(hass)
+    if "visible" in msg:
+        await async_set_sidebar(hass, msg["visible"])
     connection.send_result(msg["id"], {"visible": await async_sidebar_visible(hass)})

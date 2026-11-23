@@ -137,6 +137,11 @@ await page.locator('easy-av-control-reports summary', { hasText: 'Entities' }).c
 await page.locator('easy-av-control-reports .ent').first().waitFor({ timeout: 30000 });
 await settle(800);
 await shotBoth('reports-entities');
+// Quick Start
+await page.getByRole('button', { name: 'Quick Start' }).last().click();
+await page.locator('easy-av-control-quick-start .step').first().waitFor({ timeout: 30000 });
+await settle(2500);
+await shotBoth('quick-start');
 // Notifications: an offer per room and monitor problem
 await page.getByRole('button', { name: 'Notifications' }).last().click();
 await page.locator('easy-av-control-notifications .offer').first().waitFor({ timeout: 30000 });

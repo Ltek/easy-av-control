@@ -151,7 +151,7 @@ export class EasyAvControlRoomEditor extends LitElement {
   /** All profiles (profiles/list), for the profile picker; given by the panel */
   declare profiles: ProfileView[];
   /** From the menu: open this activity, at its Flow when ``flow``; ``n`` makes each click a change */
-  declare jump?: { activity?: string; flow: boolean; watchdog?: boolean; n: number };
+  declare jump?: { activity?: string; flow: boolean; tab?: string; n: number };
   /** Devices whose outlet is ticked but not picked yet */
   declare _powerOn: Set<string>;
   /** The Flow row being edited in place: its key (flow-view rowKey) and the panel it stands for */
@@ -214,6 +214,7 @@ export class EasyAvControlRoomEditor extends LitElement {
     const jump = this.jump;
     if (changed.has("jump") && jump && !jump.activity) {
       this._view = { kind: "list" };
+      if (jump.tab) this._tab = jump.tab as Tab;
       this._notice = undefined;
     } else if (changed.has("jump") && jump?.activity && this.room?.activities?.[jump.activity]) {
       this._view = { kind: "activity", id: jump.activity };
