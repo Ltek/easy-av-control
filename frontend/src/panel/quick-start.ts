@@ -19,7 +19,9 @@ type Step = {
   yaml?: string;
   automations?: { entity_id: string; name: string; edit_id: string | null; entities: string[] }[];
 };
+type ActivitySteps = { room: string; room_name: string; id: string; name: string; enabled: boolean; steps: Step[] };
 type Plan = {
+  activities: ActivitySteps[];
   status: { rooms: number; devices: number; activities: number; disabled: number; runs: number; alerts: number; blueprint: boolean };
   steps: Step[];
   todo: number;
@@ -41,6 +43,7 @@ export class EasyAvControlQuickStart extends LitElement {
     _busy: { state: true },
     _cardOn: { state: true },
     _copied: { state: true },
+    _tab: { state: true },
   };
 
   declare hass: HomeAssistant;
@@ -50,9 +53,12 @@ export class EasyAvControlQuickStart extends LitElement {
   /** Dashboards with the card (undefined: not checked yet) */
   declare _cardOn?: string[];
   declare _copied: boolean;
+  /** System-wide requirements, or what each activity needs */
+  declare _tab: "system" | "activity";
 
   constructor() {
     super();
+    this._tab = "system";
     this._busy = false;
     this._copied = false;
   }
@@ -117,11 +123,21 @@ export class EasyAvControlQuickStart extends LitElement {
     this.dispatchEvent(new CustomEvent("open-page", { detail: { page: link }, bubbles: true, composed: true }));
   }
 
+  private _count(steps: Step[]): { done: number; total: number } {
+    const counted = steps.filter((s) => s.status !== "skip" && s.status !== "optional");
+    return { done: counted.filter((s) => s.status === "done").length, total: counted.length };
+  }
+
+  private _summary(c: { done: number; total: number }): string {
+    return c.done === c.total ? this._t("qs.all_done") : this._t("qs.n_done", { done: String(c.done), total: String(c.total) });
+  }
+
   protected render(): TemplateResult {
     const plan = this._plan;
-    const steps = plan ? plan.steps.map((s) => this._effective(s)) : [];
-    const counted = steps.filter((s) => s.status !== "skip" && s.status !== "optional");
-    const done = counted.filter((s) => s.status === "done").length;
+    const system = plan ? plan.steps.map((s) => this._effective(s)) : [];
+    const acts = plan?.activities ?? [];
+    const sys = this._count(system);
+    const perActivity = this._count(acts.flatMap((a) => a.steps));
     return html`
       <div class="head"><h2><ha-icon icon="mdi:rocket-launch-outline"></ha-icon>${this._t("qs.title")}</h2></div>
       <p class="ltek-hint">${this._t("qs.hint")}</p>
@@ -129,23 +145,40 @@ export class EasyAvControlQuickStart extends LitElement {
       ${!plan
         ? html`<p class="ltek-hint">${this._t("loading")}</p>`
         : html`${this._renderStatus(plan)}
-            <details class="ltek-sec" open>
-              <summary>
-                <ha-icon icon="mdi:format-list-checks"></ha-icon>${this._t("qs.your_setup")}
-                <span class="summary">${done === counted.length ? this._t("qs.all_done") : this._t("qs.n_done", { done: String(done), total: String(counted.length) })}</span>
-                <ha-icon class="chev" icon="mdi:chevron-down"></ha-icon>
-              </summary>
-              <div class="ltek-body">
-                <ol class="steps">${steps.map((s) => this._renderStep(s))}</ol>
-                <div class="bar">
-                  <button class="ltek-btn primary" ?disabled=${!plan.todo || this._busy} @click=${() => this._apply()}>
-                    <ha-icon icon="mdi:auto-fix"></ha-icon>
-                    ${plan.todo ? this._t("qs.apply", { n: String(plan.todo) }) : this._t("qs.applied")}
-                  </button>
-                  <span class="ltek-hint">${this._t("qs.apply_hint")}</span>
-                </div>
-              </div>
-            </details>`}
+            <div class="tabs" role="tablist">
+              <button role="tab" class="tab ${this._tab === "system" ? "active" : ""}" aria-selected=${this._tab === "system"} @click=${() => (this._tab = "system")}>
+                <ha-icon icon="mdi:server-network-outline"></ha-icon>${this._t("qs.tab_system")}
+                <span class="count">${this._summary(sys)}</span>
+              </button>
+              <button role="tab" class="tab ${this._tab === "activity" ? "active" : ""}" aria-selected=${this._tab === "activity"} @click=${() => (this._tab = "activity")}>
+                <ha-icon icon="mdi:play-circle-outline"></ha-icon>${this._t("qs.tab_activity")}
+                <span class="count">${acts.length ? this._summary(perActivity) : "–"}</span>
+              </button>
+            </div>
+            ${this._tab === "system"
+              ? html`<p class="ltek-hint">${this._t("qs.system_hint")}</p>
+                  <ol class="steps">${system.map((s) => this._renderStep(s))}</ol>
+                  <div class="bar">
+                    <button class="ltek-btn primary" ?disabled=${!plan.todo || this._busy} @click=${() => this._apply()}>
+                      <ha-icon icon="mdi:auto-fix"></ha-icon>
+                      ${plan.todo ? this._t("qs.apply", { n: String(plan.todo) }) : this._t("qs.applied")}
+                    </button>
+                    <span class="ltek-hint">${this._t("qs.apply_hint")}</span>
+                  </div>`
+              : html`<p class="ltek-hint">${this._t("qs.activity_hint")}</p>
+                  ${acts.length
+                    ? acts.map(
+                        (a) => html`<section class="act ${a.enabled ? "" : "off"}">
+                          <h3>
+                            <ha-icon icon="mdi:play-circle-outline"></ha-icon>${a.name}
+                            <span class="room-name">${a.room_name}</span>
+                            <span class="count">${this._summary(this._count(a.steps))}</span>
+                          </h3>
+                          <ol class="steps">${a.steps.map((s) => this._renderStep(s, "qs.astep."))}</ol>
+                        </section>`,
+                      )
+                    : html`<p class="ltek-hint">${this._t("qs.no_activity")}
+                        <button class="link" @click=${() => this._open("activities")}>${this._t("qs.open")}</button></p>`}`}`}
     `;
   }
 
@@ -162,12 +195,12 @@ export class EasyAvControlQuickStart extends LitElement {
     </div>`;
   }
 
-  private _renderStep(step: Step): TemplateResult {
+  private _renderStep(step: Step, prefix = "qs.step."): TemplateResult {
     return html`<li class="step ${step.status}">
       <ha-icon icon=${ICON[step.status]}></ha-icon>
       <div class="step-body">
         <div>
-          <strong>${this._t(`qs.step.${step.id}`)}</strong>
+          <strong>${this._t(`${prefix}${step.id}`)}</strong>
           ${step.detail ? html`<span class="ltek-hint inline"> · ${step.detail}</span>` : nothing}
           ${step.link && (step.status === "manual" || step.status === "optional")
             ? html`<button class="link" @click=${() => this._open(step.link!)}>${this._t("qs.open")}</button>`
@@ -230,11 +263,60 @@ export class EasyAvControlQuickStart extends LitElement {
       h2 ha-icon {
         color: var(--ltek-c-accent);
       }
-      summary .summary {
-        margin-left: auto;
-        margin-right: 8px;
+      .tabs {
+        display: flex;
+        gap: 4px;
+        border-bottom: 1px solid var(--divider-color);
+      }
+      .tab {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 16px;
+        border: none;
+        border-bottom: 2px solid transparent;
+        background: none;
+        color: var(--secondary-text-color);
+        font: inherit;
+        cursor: pointer;
+        --mdc-icon-size: 20px;
+      }
+      .tab.active {
+        color: var(--primary-text-color);
+        border-bottom-color: var(--ltek-c-accent);
+      }
+      .count {
         font-size: var(--ltek-fs-small);
         font-weight: normal;
+        color: var(--secondary-text-color);
+      }
+      .act {
+        border: 1px solid var(--divider-color);
+        border-radius: 8px;
+        padding: 4px 12px 8px;
+        margin-bottom: 8px;
+      }
+      .act.off {
+        opacity: 0.6;
+      }
+      .act h3 {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 8px 0 4px;
+        font-size: var(--ltek-fs-body);
+        font-weight: var(--ltek-fw-semibold);
+        --mdc-icon-size: 20px;
+      }
+      .act h3 ha-icon {
+        color: var(--ltek-c-accent);
+      }
+      .act h3 .count {
+        margin-left: auto;
+      }
+      .room-name {
+        font-weight: normal;
+        font-size: var(--ltek-fs-small);
         color: var(--secondary-text-color);
       }
       .stats {

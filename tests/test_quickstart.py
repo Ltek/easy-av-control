@@ -13,8 +13,10 @@ async def test_plan_and_apply(hass: HomeAssistant, devices: Devices, hass_ws_cli
     plan = (await client.receive_json())["result"]
     steps = {s["id"]: s for s in plan["steps"]}
     assert steps["rooms"]["status"] == "done"
-    assert steps["activity"]["status"] == "done"
-    assert steps["tested"]["status"] == "manual"
+    assert "activity" not in steps and "tested" not in steps
+    per = {a["id"]: {s["id"]: s for s in a["steps"]} for a in plan["activities"]}
+    assert per and all(s["devices"]["status"] == "done" for s in per.values())
+    assert all(s["tested"]["status"] == "manual" for s in per.values())
     assert steps["competing"]["status"] == "done"
     assert steps["card"]["browser"] is True
     assert plan["status"]["devices"] == 3

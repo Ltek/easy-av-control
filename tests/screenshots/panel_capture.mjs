@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const HA = process.env.HA_URL || 'http://127.0.0.1:8125';
-const OUT = process.env.OUT || 'docs/images';
+const OUT = process.env.OUT || 'screenshots';
 const ROOM = JSON.parse(fs.readFileSync(process.env.ROOM_JSON, 'utf8'));
 let chromium;
 for (const mod of [process.env.PLAYWRIGHT_CORE, 'playwright-core', 'playwright'].filter(Boolean)) {
@@ -142,6 +142,9 @@ await page.getByRole('button', { name: 'Quick Start' }).last().click();
 await page.locator('easy-av-control-quick-start .step').first().waitFor({ timeout: 30000 });
 await settle(2500);
 await shotBoth('quick-start');
+await page.locator('easy-av-control-quick-start button.tab').nth(1).click();
+await settle(800);
+await shotBoth('quick-start-activities');
 // Notifications: an offer per room and monitor problem
 await page.getByRole('button', { name: 'Notifications' }).last().click();
 await page.locator('easy-av-control-notifications .offer').first().waitFor({ timeout: 30000 });

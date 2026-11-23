@@ -9,7 +9,7 @@ REPO="$(cd "$HERE/../.." && pwd)"
 PYTHON="${PYTHON:-python3}"
 export HA_PORT="${HA_PORT:-8125}"
 export HA_URL="http://127.0.0.1:${HA_PORT}"
-export OUT="${1:-$REPO/docs/images}"
+export OUT="${1:-$REPO/screenshots}"
 CONFIG="$(mktemp -d)"
 cleanup() { [ -n "${HA_PID:-}" ] && kill "$HA_PID" 2>/dev/null || true; wait 2>/dev/null || true; [ -n "${KEEP:-}" ] && cp "$CONFIG/home-assistant.log" "$KEEP" ; rm -rf "$CONFIG"; }
 trap cleanup EXIT

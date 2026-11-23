@@ -10,8 +10,8 @@
 Based on [AV Scenes](https://github.com/mkshb/hass-av-scenes) by mkshb (MIT). History is in [CHANGELOG.md](CHANGELOG.md).
 
 <p>
-  <img src="https://raw.githubusercontent.com/Ltek/easy-av-control/main/docs/images/card.gif" alt="The remote control card starting the Movie activity, light theme" width="49%">
-  <img src="https://raw.githubusercontent.com/Ltek/easy-av-control/main/docs/images/card-dark.gif" alt="The remote control card starting the Movie activity, dark theme" width="49%">
+  <img src="https://raw.githubusercontent.com/Ltek/easy-av-control/main/screenshots/card.gif" alt="The remote control card starting the Movie activity, light theme" width="49%">
+  <img src="https://raw.githubusercontent.com/Ltek/easy-av-control/main/screenshots/card-dark.gif" alt="The remote control card starting the Movie activity, dark theme" width="49%">
 </p>
 
 Easy AV Control controls the devices of a room (AV receiver, projector, TV, set-top box, lights, covers, power outlets) through named **activities** such as "TV" or "Movie". Starting an activity powers the devices it needs, waits until they are actually ready, applies sources, sound modes and volume, and runs any Home Assistant actions you attach. Switching to another activity only touches what differs; stopping shuts everything down in reverse order, with cool-down times and power outlets last.
@@ -33,82 +33,331 @@ A script that switches on a receiver, a projector and a set-top box works until 
 
 ## Screenshots
 
-### Remote control card
+Drop images into `screenshots/` and push: GitHub rebuilds this gallery by itself. The pictures show made-up
+devices, so names and values on yours will differ.
 
-Power, activities, start progress with what it is busy with, now playing, volume, d-pad or touch surface, channels, own buttons and device settings.
-
-<p>
-  <img src="https://raw.githubusercontent.com/Ltek/easy-av-control/main/docs/images/card.png" alt="Remote control card while an activity runs, light theme" width="49%">
-  <img src="https://raw.githubusercontent.com/Ltek/easy-av-control/main/docs/images/card-dark.png" alt="Remote control card while an activity runs, dark theme" width="49%">
-</p>
-
-With arrow keys instead of the touch surface, here for a satellite receiver with its channel keys:
-
-<p>
-  <img src="https://raw.githubusercontent.com/Ltek/easy-av-control/main/docs/images/card-dpad.png" alt="Remote control card with arrow keys, light theme" width="49%">
-  <img src="https://raw.githubusercontent.com/Ltek/easy-av-control/main/docs/images/card-dpad-dark.png" alt="Remote control card with arrow keys, dark theme" width="49%">
-</p>
-
-Below the buttons, the settings of the activity's devices: sound mode with favourites, tone controls and speaker levels of the receiver, the inputs of projector and Apple TV:
-
-<p>
-  <img src="https://raw.githubusercontent.com/Ltek/easy-av-control/main/docs/images/card-settings.png" alt="Device settings opened in the remote control card, light theme" width="49%">
-  <img src="https://raw.githubusercontent.com/Ltek/easy-av-control/main/docs/images/card-settings-dark.png" alt="Device settings opened in the remote control card, dark theme" width="49%">
-</p>
-
-### Configuration panel
-
-Rooms, devices and activities in the sidebar, each edited on its own page with help texts.
-
-![Configuration panel with the devices and activities of a room, light theme](https://raw.githubusercontent.com/Ltek/easy-av-control/main/docs/images/panel.png)
-
-![Configuration panel with the devices and activities of a room, dark theme](https://raw.githubusercontent.com/Ltek/easy-av-control/main/docs/images/panel-dark.png)
-
-### Flow of an activity
-
-What starting, switching and stopping do with the configuration you are editing, with the earliest and latest time of each row.
-
-![Flow view of an activity in the configuration panel, light theme](https://raw.githubusercontent.com/Ltek/easy-av-control/main/docs/images/flow.png)
-
-![Flow view of an activity in the configuration panel, dark theme](https://raw.githubusercontent.com/Ltek/easy-av-control/main/docs/images/flow-dark.png)
-
-### Remote control preview
-
-The card as it looks while the activity runs. A tap shows which device gets the button and what runs there instead of sending it.
-
-![Remote control preview in the configuration panel, light theme](https://raw.githubusercontent.com/Ltek/easy-av-control/main/docs/images/preview.png)
-
-![Remote control preview in the configuration panel, dark theme](https://raw.githubusercontent.com/Ltek/easy-av-control/main/docs/images/preview-dark.png)
-
-### Device state
-
-What was detected for a device (its profile, the entity that says it's on, its state now) and how to wait for
-it: its status, a fixed time, or both, with timeouts, debounce, and what to do when it doesn't come on.
-
-<p>
-  <img src="https://raw.githubusercontent.com/Ltek/easy-av-control/main/docs/images/device.png" alt="A device page with its Detected box, light theme" width="49%">
-  <img src="https://raw.githubusercontent.com/Ltek/easy-av-control/main/docs/images/device-dark.png" alt="A device page with its Detected box, dark theme" width="49%">
-</p>
-
-### Profiles
-
-Built-in profiles (locked: duplicate one to change it) and your own, with export and import as text.
-
-<p>
-  <img src="https://raw.githubusercontent.com/Ltek/easy-av-control/main/docs/images/profiles.png" alt="The Profiles page, light theme" width="49%">
-  <img src="https://raw.githubusercontent.com/Ltek/easy-av-control/main/docs/images/profiles-dark.png" alt="The Profiles page, dark theme" width="49%">
-</p>
-
-### Detect integrations
-
-What's installed compared with what the rooms use: new devices, better integrations, missing and renamed
-entities, and integrations without a profile. (The screenshots' made-up devices have no profile, so only the last
-section shows.)
-
-<p>
-  <img src="https://raw.githubusercontent.com/Ltek/easy-av-control/main/docs/images/detect.png" alt="Detect integrations, light theme" width="49%">
-  <img src="https://raw.githubusercontent.com/Ltek/easy-av-control/main/docs/images/detect-dark.png" alt="Detect integrations, dark theme" width="49%">
-</p>
+<!-- SCREENSHOTS:START -->
+<table>
+  <tr>
+    <td align="center" valign="top">
+      <img src="screenshots/card-dark.gif" width="100%" alt="card dark">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/card-dark.png" width="100%" alt="card dark">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/card-dpad-dark.png" width="100%" alt="card dpad dark">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/card-dpad.png" width="100%" alt="card dpad">
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <img src="screenshots/card-settings-dark.png" width="100%" alt="card settings dark">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/card-settings.png" width="100%" alt="card settings">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/card.gif" width="100%" alt="card">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/card.png" width="100%" alt="card">
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <img src="screenshots/detect-dark.png" width="100%" alt="detect dark">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/detect.png" width="100%" alt="detect">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/device-dark.png" width="100%" alt="device dark">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/device-state-dark.png" width="100%" alt="device state dark">
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <img src="screenshots/device-state.png" width="100%" alt="device state">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/device.png" width="100%" alt="device">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/flow-dark.png" width="100%" alt="flow dark">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/flow.png" width="100%" alt="flow">
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-activity-card-light.png" width="100%" alt="panel activity card light">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-activity-card.png" width="100%" alt="panel activity card">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-activity-checks-light.png" width="100%" alt="panel activity checks light">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-activity-checks.png" width="100%" alt="panel activity checks">
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-activity-export-light.png" width="100%" alt="panel activity export light">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-activity-export.png" width="100%" alt="panel activity export">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-activity-flow-add-light.png" width="100%" alt="panel activity flow add light">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-activity-flow-add.png" width="100%" alt="panel activity flow add">
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-activity-flow-edit-device-light.png" width="100%" alt="panel activity flow edit device light">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-activity-flow-edit-device.png" width="100%" alt="panel activity flow edit device">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-activity-flow-light.png" width="100%" alt="panel activity flow light">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-activity-flow-options-light.png" width="100%" alt="panel activity flow options light">
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-activity-flow-options.png" width="100%" alt="panel activity flow options">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-activity-flow.png" width="100%" alt="panel activity flow">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-activity-light.png" width="100%" alt="panel activity light">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-activity-monitor-light.png" width="100%" alt="panel activity monitor light">
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-activity-monitor.png" width="100%" alt="panel activity monitor">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-activity-preview-light.png" width="100%" alt="panel activity preview light">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-activity-preview.png" width="100%" alt="panel activity preview">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-activity-started-by-light.png" width="100%" alt="panel activity started by light">
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-activity-started-by.png" width="100%" alt="panel activity started by">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-activity.png" width="100%" alt="panel activity">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-card-editor-light.png" width="100%" alt="panel card editor light">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-card-editor.png" width="100%" alt="panel card editor">
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-card-flow-light.png" width="100%" alt="panel card flow light">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-card-flow-live-light.png" width="100%" alt="panel card flow live light">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-card-flow-live.png" width="100%" alt="panel card flow live">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-card-flow.png" width="100%" alt="panel card flow">
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-dark.png" width="100%" alt="panel dark">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-detect-light.png" width="100%" alt="panel detect light">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-detect.png" width="100%" alt="panel detect">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-device-light.png" width="100%" alt="panel device light">
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-device-power-light.png" width="100%" alt="panel device power light">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-device-power-off-light.png" width="100%" alt="panel device power off light">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-device-power-off.png" width="100%" alt="panel device power off">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-device-power.png" width="100%" alt="panel device power">
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-device-state-light.png" width="100%" alt="panel device state light">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-device-state.png" width="100%" alt="panel device state">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-device.png" width="100%" alt="panel device">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-devices-light.png" width="100%" alt="panel devices light">
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-devices.png" width="100%" alt="panel devices">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-guide-light.png" width="100%" alt="panel guide light">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-guide.png" width="100%" alt="panel guide">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-notifications-light.png" width="100%" alt="panel notifications light">
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-notifications.png" width="100%" alt="panel notifications">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-profile-draft-light.png" width="100%" alt="panel profile draft light">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-profile-draft.png" width="100%" alt="panel profile draft">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-profile-export-light.png" width="100%" alt="panel profile export light">
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-profile-export.png" width="100%" alt="panel profile export">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-profile-form-light.png" width="100%" alt="panel profile form light">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-profile-form-status-light.png" width="100%" alt="panel profile form status light">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-profile-form-status.png" width="100%" alt="panel profile form status">
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-profile-form.png" width="100%" alt="panel profile form">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-profile-view-light.png" width="100%" alt="panel profile view light">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-profile-view.png" width="100%" alt="panel profile view">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-profiles-light.png" width="100%" alt="panel profiles light">
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-profiles.png" width="100%" alt="panel profiles">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-quick-start-activities-light.png" width="100%" alt="panel quick start activities light">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-quick-start-activities.png" width="100%" alt="panel quick start activities">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-quick-start-light.png" width="100%" alt="panel quick start light">
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-quick-start.png" width="100%" alt="panel quick start">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-reports-devices-light.png" width="100%" alt="panel reports devices light">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-reports-devices.png" width="100%" alt="panel reports devices">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-reports-entities-light.png" width="100%" alt="panel reports entities light">
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-reports-entities.png" width="100%" alt="panel reports entities">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-reports-runs-light.png" width="100%" alt="panel reports runs light">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-reports-runs.png" width="100%" alt="panel reports runs">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-watchdog-light.png" width="100%" alt="panel watchdog light">
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-watchdog.png" width="100%" alt="panel watchdog">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel.png" width="100%" alt="panel">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/preview-dark.png" width="100%" alt="preview dark">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/preview.png" width="100%" alt="preview">
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <img src="screenshots/profiles-dark.png" width="100%" alt="profiles dark">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/profiles.png" width="100%" alt="profiles">
+    </td>
+    <td></td>
+    <td></td>
+  </tr>
+</table>
+<!-- SCREENSHOTS:END -->
 
 ---
 
@@ -195,15 +444,18 @@ Assistant. The built remote control card and panel are included.
 ### Configuration panel
 
 **Quick Start** (top of Setup in the panel's menu, and the first page while there is no room): what is set up, as
-chips, and the steps left, each done / to apply / for you / optional. It names your own automations that also switch
-the rooms' AV devices (an old "system on" automation would fight with Easy AV Control), checks that the remote control
-card is on a dashboard, and **Apply** installs the notifications blueprint.
+chips, and the steps left, each done / to apply / for you / optional. Two tabs keep the **System** requirements (a
+room, its devices, their status, no other automation switching them, the notifications blueprint and notifications,
+the card on a dashboard, the sidebar) apart from the **Activities** requirements, listed per activity (its devices, a
+startup that worked, checks, Harmony Started by, auto-off). It names your own automations that also switch the rooms'
+AV devices (an old "system on" automation would fight with Easy AV Control), checks that the remote control card is
+on a dashboard, and **Apply** installs the notifications blueprint.
 
 The panel edits everything the [configuration](#configuration) below describes:
 
-- **Devices** — entity and power outlet with Home Assistant's entity picker; boot time, wait times and readiness check as fields; own `commands` in a YAML field. Renaming a device ID updates every reference; a device that an activity still uses cannot be deleted.
+- **Devices** — entity and power outlet with Home Assistant's entity picker; status source and profile as fields; own `commands` in a YAML field. Renaming a device ID updates every reference; a device that an activity still uses cannot be deleted.
 - **Activities** — name, icon, position, remote button routing; everything a startup and a shutdown do is edited in the activity's Flow. The activity ID is part of the entity IDs and cannot be changed.
-- **Flow** — the activity's editor, at the top of its page. ✎ on a line opens its settings right under it: a device's order, what it waits for before it is turned on, and its own settings; the checks; the actions after start; the actions on start and stop (Home Assistant's action editor, the same as in automations). The trash icon removes a line: a device from the activity, a wait, a check, an action. **+** under the Flow adds a device, a check or an action. A device's settings belong to the device, so changing them changes every activity that uses it. The Flow shows what a start, a switch from another activity or a stop does with this configuration, step by step: which outlets and devices are switched with which action, boot times, readiness checks with their timeout and what happens on a timeout, steps, the actions on start and stop, outlets cut in the background, and the earliest and latest time of each row. It follows every change before it is saved; see also [ACTIVITY_FLOW.md](ACTIVITY_FLOW.md).
+- **Flow** — the activity's editor, at the top of its page. ✎ on a line opens its settings right under it: a device's order, what it waits for before it is turned on, and its own settings; the checks; the actions after start; the actions on start and stop (Home Assistant's action editor, the same as in automations). The trash icon removes a line: a device from the activity, a wait, a check, an action. **+** under the Flow adds a device, a check or an action. A device's waits and actions belong to the activity's Flow, so changing them changes only that activity. The Flow shows what a start, a switch from another activity or a stop does with this configuration, step by step: which outlets and devices are switched with which action, boot times, readiness checks with their timeout and what happens on a timeout, steps, the actions on start and stop, outlets cut in the background, and the earliest and latest time of each row. It follows every change before it is saved; see also [ACTIVITY_FLOW.md](ACTIVITY_FLOW.md).
 - **Remote control preview** — on every activity's page: the card as it looks while the activity runs, following the button routing, quick select and extra buttons as you change them. Tapping a button sends nothing but shows which device gets it and what runs there (e.g. `remote.send_command "select"` on the Apple TV's remote). Buttons that would do nothing are listed, and every button group shows its device, whether it was chosen or automatic, and why it is missing.
 - **YAML** — the whole room as YAML, for anything the forms do not cover.
 
@@ -878,10 +1130,13 @@ The build output is committed: after changing anything in `frontend/`, run `npm 
 The screenshots are taken from a real Home Assistant with the made-up devices of `tests/screenshots/av_demo`:
 
 ```bash
-# The README images (docs/images/): needs playwright, pillow and pyyaml in SHOTS_PYTHON
+# The README images (screenshots/): needs playwright, pillow and pyyaml in SHOTS_PYTHON
 README=1 SHOTS_PYTHON=/path/to/venv/bin/python PYTHON=/path/to/ha-venv/bin/python tests/screenshots/panel_run.sh
-# Every panel page in both themes, into a folder of your choice (Node, playwright-core)
-PYTHON=/path/to/ha-venv/bin/python tests/screenshots/panel_run.sh /tmp/shots
+# Every panel page in both themes, into screenshots/ or a folder of your choice (Node, playwright-core)
+PYTHON=/path/to/ha-venv/bin/python tests/screenshots/panel_run.sh [folder]
+
+# Rebuild the gallery above from screenshots/ (GitHub does it on push, see .github/workflows/update-screenshots.yml)
+python3 scripts/update-screenshots.py
 ```
 
 `PYTHON` needs `homeassistant` and `home-assistant-frontend`. `CHROME` can point to a Chromium of your own, and

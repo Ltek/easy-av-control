@@ -5,6 +5,9 @@ Each step has a status: done / todo (Apply does it) / manual (needs you; ``link`
 ``…/apply`` does the automatic steps that aren't done (install the notifications blueprint, show the editor in the
 sidebar). Steps the browser checks itself (the card on a dashboard) carry ``browser: true``.
 
+``steps`` are the requirements of the whole system (the System tab); ``activities`` lists, per activity, the steps
+that activity needs on its own (the Activity tab).
+
 The "Other automations" step lists your own automations that switch a device a room uses: they would fight with
 Easy AV Control (an old "system on" automation). Easy AV Control's own alerts are not counted.
 """
@@ -104,12 +107,9 @@ async def async_plan(hass: HomeAssistant) -> dict[str, Any]:
     no_status = [dev.get("name") or dev[CONF_ENTITY_ID] for _, _, dev in devices if effective_source(hass, library.profiles, dev) is None]
     ok_runs = [run for run in history.runs if run.get("mode") == "start" and run.get("result") in ("ok", "warning")]
     competing = _competing(hass, rooms)
-    harmony = any(dev[CONF_ENTITY_ID].startswith("select.harmony") for _, _, dev in devices)
-    started_by = any(act.get(CONF_STARTED_BY) for _, _, act in activities)
-    auto_off = any((act.get(CONF_MONITOR) or {}).get("idle_after") for _, _, act in activities)
-    checks = any(act.get(CONF_CHECKS) for _, _, act in activities)
     made = [o for o in offers if o.get("automation")]
 
+    # Needed once for the whole system
     steps = [
         _step(
             "rooms", "A room", "done" if rooms else "manual",
@@ -128,32 +128,9 @@ async def async_plan(hass: HomeAssistant) -> dict[str, Any]:
             "profiles",
         ),
         _step(
-            "activity", "An activity with its devices",
-            "done" if any(act[CONF_DEVICES] for _, _, act in activities) else "manual",
-            f"{len(activities)} activit{'y' if len(activities) == 1 else 'ies'}" if activities else "Activities tab → + Activity, then its Flow",
-            "activities",
-        ),
-        _step(
             "competing", "No other automation switches the AV devices", "done" if not competing else "manual",
             "" if not competing else "these would switch devices alongside Easy AV Control: turn them off, or keep only their lights",
             None, automations=competing,
-        ),
-        _step(
-            "tested", "A startup that worked", "done" if ok_runs else ("manual" if activities else "skip"),
-            f"{len(ok_runs)} run(s) in Reports" if ok_runs else "press and hold Startup on the activity's page; Reports shows how long it took",
-            "reports",
-        ),
-        _step(
-            "checks", "Checks: does it work once it's on (a picture)", "done" if checks else ("optional" if activities else "skip"),
-            "" if checks else "the activity's Flow → + Check", "activities",
-        ),
-        _step(
-            "started_by", "The Harmony remote starts the activity", "done" if started_by else ("optional" if harmony else "skip"),
-            "" if started_by else "the activity's Flow → + Started by → the hub's Activities", "activities",
-        ),
-        _step(
-            "auto_off", "Auto-off when nothing plays", "done" if auto_off else ("optional" if activities else "skip"),
-            "" if auto_off else "the activity's Flow → Monitoring → + Auto-off", "activities",
         ),
         _step(
             "blueprint", "Notifications blueprint", "done" if blueprint["installed"] else "todo",
@@ -169,6 +146,47 @@ async def async_plan(hass: HomeAssistant) -> dict[str, Any]:
             "" if sidebar else "Apply shows Easy AV Control in Home Assistant's sidebar",
         ),
     ]
+    # What each activity needs on its own
+    per_activity = []
+    for room_id, room in rooms.items():
+        for act_id, act in room[CONF_ACTIVITIES].items():
+            used = [room[CONF_DEVICES][d] for d in act[CONF_DEVICES] if d in room[CONF_DEVICES]]
+            runs = [r for r in ok_runs if r.get("room") == room_id and r.get("activity") == act_id]
+            has_harmony = any(dev[CONF_ENTITY_ID].startswith("select.harmony") for dev in used)
+            per_activity.append(
+                {
+                    "room": room_id,
+                    "room_name": room.get("name") or room_id,
+                    "id": act_id,
+                    "name": act.get("name") or act_id,
+                    "enabled": act.get(CONF_ENABLED) is not False,
+                    "steps": [
+                        _step(
+                            "devices", "Its devices", "done" if used else "manual",
+                            f"{len(used)} device(s)" if used else "the activity's Flow → + Device", "activities",
+                        ),
+                        _step(
+                            "tested", "A startup that worked", "done" if runs else ("manual" if used else "skip"),
+                            f"{len(runs)} run(s) in Reports" if runs else "press and hold Startup on the activity's page; Reports shows how long it took",
+                            "reports",
+                        ),
+                        _step(
+                            "checks", "Checks: does it work once it's on (a picture)", "done" if act.get(CONF_CHECKS) else ("optional" if used else "skip"),
+                            "" if act.get(CONF_CHECKS) else "the activity's Flow → + Check", "activities",
+                        ),
+                        _step(
+                            "started_by", "The Harmony remote starts the activity",
+                            "done" if act.get(CONF_STARTED_BY) else ("optional" if has_harmony else "skip"),
+                            "" if act.get(CONF_STARTED_BY) else "the activity's Flow → + Started by → the hub's Activities", "activities",
+                        ),
+                        _step(
+                            "auto_off", "Auto-off when nothing plays",
+                            "done" if (act.get(CONF_MONITOR) or {}).get("idle_after") else ("optional" if used else "skip"),
+                            "" if (act.get(CONF_MONITOR) or {}).get("idle_after") else "the activity's Flow → Monitoring → + Auto-off", "activities",
+                        ),
+                    ],
+                }
+            )
     status = {
         "rooms": len(rooms),
         "devices": len(devices),
@@ -178,7 +196,7 @@ async def async_plan(hass: HomeAssistant) -> dict[str, Any]:
         "alerts": len(made),
         "blueprint": blueprint["installed"],
     }
-    return {"status": status, "steps": steps, "todo": sum(1 for s in steps if s["status"] == "todo")}
+    return {"status": status, "steps": steps, "activities": per_activity, "todo": sum(1 for s in steps if s["status"] == "todo")}
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/quickstart/plan"})

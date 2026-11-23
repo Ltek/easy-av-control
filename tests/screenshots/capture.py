@@ -7,7 +7,7 @@ Logs into HA-Dev with a browser, writes the living room from ``room.yaml``
 into the Easy AV Control entry (other rooms stay as they are) and a dashboard
 ``easy-av-control-demo`` with the card, then drives the card and the configuration
 panel. The room's devices are the fake ones of ``av_demo``, so nothing real
-is switched. Images go to docs/images/, those of the dark theme with -dark.
+is switched. Images go to screenshots/, those of the dark theme with -dark.
 
 Setup in HA-Dev, once:
   - this repository's custom_components/easy_av_control (with the built frontend)

@@ -1,5 +1,16 @@
 # Changelog
 
+## v2026.11.23.31
+
+**Changed**
+- **Quick Start has two tabs.** **System** holds what is needed once (a room, its devices, their status, no other
+  automation switching them, the notifications blueprint and notifications, the card, the sidebar). **Activities**
+  lists, per activity, what it needs on its own: its devices, a startup that worked, checks, Harmony Started by,
+  auto-off. The page is no longer collapsible.
+- The README gallery is built from `screenshots/` on GitHub (`scripts/update-screenshots.py` and
+  `.github/workflows/update-screenshots.yml`). All screenshots moved there from `docs/images/`, and the panel pages
+  were taken again with this build.
+
 ## v2026.11.23.30
 
 **Changed**
