@@ -420,10 +420,10 @@ hook) follows the room's sensor instead of waiting minutes for the select. The `
 | `commands` | Remote buttons only this activity has, see [Remote control](#remote-control) |
 
 **Export / Import**: an activity's page has **Export**; the Activities tab has **Export all** and **Import**. An
-export is JSON (copy or download) with the activities and every device they use. Importing it, into another room or
-another Home Assistant, uses the room's own device wherever it has the same entity and adds the others; taken IDs get
-new ones and every reference follows. Started by is left out when another activity of the room already starts on that
-entity. Nothing is stored until Save.
+export is JSON (copy or download) with the activities and every device they use. **Import** replaces an activity of
+the same name, and every device with the same entity, completely with the file's (it asks first when other activities
+use those devices); the rest is added. **Import as a copy** adds the activity beside the old one as "Name 2", without
+its Started by. Nothing is stored until Save.
 
 `before` takes, per device of the activity:
 

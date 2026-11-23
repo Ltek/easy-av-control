@@ -1,12 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { exportActivities, importActivities, type Room } from "../src/panel/model";
+import { exportActivities, importActivities, uniqueName, type Room } from "../src/panel/model";
 
 const theater: Room = {
   devices: {
     jvc: { entity_id: "remote.jvc_projector" },
-    lumagen: { entity_id: "switch.lumagen_radiancepro_power" },
+    lumagen: { entity_id: "switch.lumagen_radiancepro_power", wait_on: "status", ready: { timeout: 60 } },
     shield: { entity_id: "media_player.shield_tv_remote" },
     spare: { entity_id: "switch.spare" },
   },
@@ -19,8 +19,11 @@ const theater: Room = {
       remote: { navigation: "shield" },
       started_by: [{ entity_id: "select.harmony_hub_activities", state: "On" }],
     },
+    music: { name: "Music", devices: ["lumagen"] },
   },
 };
+
+const exported = () => JSON.parse(JSON.stringify(exportActivities(theater, ["movie"])));
 
 test("an export holds the activity and only the devices it needs", () => {
   const env = exportActivities(theater, ["movie"]) as { activities: object; devices: object };
@@ -28,25 +31,42 @@ test("an export holds the activity and only the devices it needs", () => {
   assert.deepEqual(Object.keys(env.devices).sort(), ["jvc", "lumagen", "shield"]);
 });
 
-test("importing into the same room makes a copy that uses the same devices", () => {
-  const result = importActivities(theater, JSON.parse(JSON.stringify(exportActivities(theater, ["movie"]))));
-  assert.deepEqual(Object.keys(result.added), ["movie_2"]);
-  assert.deepEqual(result.devicesAdded, []);
-  assert.deepEqual(result.startedByDropped, ["Movie"]);
-  assert.equal(result.room.activities!.movie_2.started_by, undefined);
-  assert.equal(Object.keys(result.room.devices!).length, 4);
+test("an import replaces the activity of the same name and its devices completely", () => {
+  const env = exported();
+  env.activities.movie.devices = ["jvc", "shield"];
+  env.devices.lumagen = { entity_id: "switch.lumagen_radiancepro_power", wait_on: "none" };
+  const result = importActivities(theater, env);
+  assert.deepEqual(result.replaced, { movie: "Movie" });
+  assert.deepEqual(result.added, {});
+  assert.deepEqual(result.room.activities!.movie.devices, ["jvc", "shield"]);
+  assert.deepEqual(result.room.devices!.lumagen, { entity_id: "switch.lumagen_radiancepro_power", wait_on: "none" });
+  assert.deepEqual(result.alsoAffected, ["Music"]);
+  assert.ok(result.room.activities!.movie.started_by);
+  assert.equal(Object.keys(result.room.activities!).length, 2);
 });
 
-test("importing into another room matches devices by entity and adds the rest", () => {
+test("as a copy it is added with a numeral, without Started by", () => {
+  const result = importActivities(theater, exported(), true);
+  assert.deepEqual(result.added, { movie_2: "Movie 2" });
+  assert.deepEqual(result.startedByDropped, ["Movie"]);
+  assert.equal(result.room.activities!.movie_2.started_by, undefined);
+});
+
+test("into another room devices are matched by entity and the rest added", () => {
   const other: Room = { devices: { projector: { entity_id: "remote.jvc_projector" }, shield: { entity_id: "media_player.other" } } };
-  const result = importActivities(other, exportActivities(theater, ["movie"]));
-  assert.deepEqual(result.matched, { jvc: "projector" });
+  const result = importActivities(other, exported());
+  assert.deepEqual(result.devicesReplaced, ["projector"]);
   assert.deepEqual(result.devicesAdded.sort(), ["lumagen", "shield_2"]);
   const movie = result.room.activities!.movie;
   assert.deepEqual(movie.devices, ["projector", "lumagen", "shield_2"]);
   assert.equal(movie.before?.shield_2.wait_for?.[0].device, "lumagen");
   assert.equal((movie.remote as { navigation: string }).navigation, "shield_2");
-  assert.ok(movie.started_by);
+});
+
+test("names", () => {
+  assert.equal(uniqueName("Watch Show", ["watch show"]), "Watch Show 2");
+  assert.equal(uniqueName("Watch Show", ["Watch Show", "Watch Show 2"]), "Watch Show 3");
+  assert.equal(uniqueName("TV", ["Movie"]), "TV");
 });
 
 test("something else is refused", () => {

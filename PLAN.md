@@ -443,6 +443,12 @@ devices you set up already pick up their profile automatically.
   v2026.11.22.3 no longer drops the connection on one late reply and gives 90 s after a power command.
 - Report export with run traces.
 
+## Next build (noted 2026-11-23)
+
+- Rooms and activities record **Added** and **Last updated** (date and time), shown on their pages and in the lists.
+- **Unique names**: a room or activity name already in use is refused when typed; Duplicate adds a numeral
+  ("Watch Show 2"), as Import as a copy does since 2026.11.23.28.
+
 ## Roadmap (after this plan)
 
 Done after the plan: **measured times** (2026.11.20.7).

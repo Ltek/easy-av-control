@@ -472,22 +472,37 @@ export function exportActivities(room: Room, ids: string[]): Obj {
 
 export interface ActivityImport {
   room: Room;
-  /** New activity id -> its name */
+  /** Activities added (new id -> name) */
   added: Record<string, string>;
-  /** Devices of the export that this room has already (same entity): export id -> this room's id */
-  matched: Record<string, string>;
+  /** Activities replaced by the file's (id -> name) */
+  replaced: Record<string, string>;
+  /** Devices replaced by the file's (this room's id), matched by entity */
+  devicesReplaced: string[];
   /** Devices added to the room */
   devicesAdded: string[];
+  /** Other activities that use a replaced device, so they get its new settings too (names) */
+  alsoAffected: string[];
   /** Started by left out, because another activity of the room starts on the same entity */
   startedByDropped: string[];
 }
 
+/** "Watch Show" -> "Watch Show 2" (3, ...) when the name is taken. */
+export function uniqueName(name: string, taken: Iterable<string>): string {
+  const used = new Set([...taken].map((n) => n.trim().toLowerCase()));
+  if (!used.has(name.trim().toLowerCase())) return name;
+  const base = name.replace(/\s+\d+$/, "");
+  let n = 2;
+  while (used.has(`${base} ${n}`.toLowerCase())) n += 1;
+  return `${base} ${n}`;
+}
+
 /**
- * Add an export's activities to a room, unsaved. A device of the export whose entity the room has already is that
- * device; any other is added. Activities and devices whose ID is taken get a new one, and every reference follows.
- * Throws Error for something that isn't an activity export.
+ * Import an export into a room, unsaved. A device with the same entity as one of the room's replaces it completely;
+ * any other is added. An activity with the same name (or ID) replaces it completely, or with ``copy`` is added
+ * beside it as "Name 2". Taken IDs get a new one and every reference follows. Throws Error for something that isn't
+ * an activity export.
  */
-export function importActivities(room: Room, data: unknown): ActivityImport {
+export function importActivities(room: Room, data: unknown, copy = false): ActivityImport {
   const env = data as Obj;
   if (!env || typeof env !== "object" || env.format !== ACTIVITY_EXPORT_FORMAT || typeof env.activities !== "object") {
     throw new Error("not an Easy AV Control activity export");
@@ -495,41 +510,64 @@ export function importActivities(room: Room, data: unknown): ActivityImport {
   const incomingDevices = (env.devices ?? {}) as Record<string, Device>;
   const devices: Record<string, Device> = { ...(room.devices ?? {}) };
   const map: Record<string, string> = {};
-  const matched: Record<string, string> = {};
+  const devicesReplaced: string[] = [];
   const devicesAdded: string[] = [];
   for (const [id, device] of Object.entries(incomingDevices)) {
-    const same = Object.entries(devices).find(([, d]) => d.entity_id && d.entity_id === device.entity_id);
+    const same = Object.entries(devices).find(([d, existing]) => existing.entity_id && existing.entity_id === device.entity_id && !devicesAdded.includes(d));
     if (same) {
+      devices[same[0]] = JSON.parse(JSON.stringify(device)) as Device;
       map[id] = same[0];
-      matched[id] = same[0];
+      devicesReplaced.push(same[0]);
       continue;
     }
     const to = uniqueKey(id, Object.keys(devices));
-    devices[to] = device;
+    devices[to] = JSON.parse(JSON.stringify(device)) as Device;
     map[id] = to;
     devicesAdded.push(to);
   }
   const activities: Record<string, Activity> = { ...(room.activities ?? {}) };
   const added: Record<string, string> = {};
+  const replaced: Record<string, string> = {};
   const startedByDropped: string[] = [];
-  const taken = new Set(
-    Object.values(room.activities ?? {}).flatMap((a) => (a.started_by ?? []).map((s) => s.entity_id)),
-  );
   for (const [id, raw] of Object.entries(env.activities as Record<string, Activity>)) {
     // Rename the export's device ids to this room's, through a scratch room
     let scratch: Room = { devices: { ...incomingDevices }, activities: { [id]: raw } };
     for (const [from, to] of Object.entries(map)) {
       if (from !== to) scratch = renameDevice(scratch, from, `${MARK}${to}`);
     }
-    let activity = scratch.activities![id];
-    activity = JSON.parse(JSON.stringify(activity).split(MARK).join("")) as Activity;
+    let activity = JSON.parse(JSON.stringify(scratch.activities![id]).split(MARK).join("")) as Activity;
+    const name = activity.name ?? id;
+    const target = copy
+      ? undefined
+      : Object.entries(activities).find(([k, a]) => !(k in added) && (a.name ?? k).trim().toLowerCase() === name.trim().toLowerCase())?.[0] ??
+        (id in activities && !(id in added) ? id : undefined);
+    const others = Object.entries(activities).filter(([k]) => k !== target);
+    const taken = new Set(others.flatMap(([, a]) => (a.started_by ?? []).map((s) => s.entity_id)));
     if ((activity.started_by ?? []).some((s) => taken.has(s.entity_id))) {
       activity = clean({ ...activity, started_by: undefined }) as Activity;
-      startedByDropped.push(activity.name ?? id);
+      startedByDropped.push(name);
     }
+    if (target) {
+      activities[target] = activity;
+      replaced[target] = name;
+      continue;
+    }
+    activity = { ...activity, name: uniqueName(name, Object.entries(activities).map(([k, a]) => a.name ?? k)) };
     const key = uniqueKey(id, Object.keys(activities));
     activities[key] = activity;
     added[key] = activity.name ?? key;
   }
-  return { room: { ...room, devices, activities }, added, matched, devicesAdded, startedByDropped };
+  const touched = new Set([...Object.keys(added), ...Object.keys(replaced)]);
+  const alsoAffected = Object.entries(activities)
+    .filter(([k, a]) => !touched.has(k) && activityDevices(a).some((d) => devicesReplaced.includes(d)))
+    .map(([k, a]) => a.name ?? k);
+  return {
+    room: { ...room, devices, activities },
+    added,
+    replaced,
+    devicesReplaced,
+    devicesAdded,
+    alsoAffected,
+    startedByDropped,
+  };
 }

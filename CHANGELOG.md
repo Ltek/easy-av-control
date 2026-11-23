@@ -1,5 +1,16 @@
 # Changelog
 
+## v2026.11.23.28
+
+**Changed**
+- **Import replaces** instead of merging: an activity of the same name, and every device with the same entity, are
+  replaced completely by the file's. When other activities use a replaced device, it asks first and names them.
+  Before, an import kept the room's devices as they were and added the activity beside the old one with the same
+  name.
+
+**Added**
+- **Import as a copy**: adds the activity beside the old one as "Name 2" (3, …), without its Started by.
+
 ## v2026.11.23.27
 
 **Added**

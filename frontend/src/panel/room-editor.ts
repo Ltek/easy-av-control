@@ -1160,13 +1160,23 @@ export class EasyAvControlRoomEditor extends LitElement {
     if (file && this._io) this._io = { ...this._io, text: await file.text(), message: undefined };
   }
 
-  private _ioImport(): void {
+  private _ioImport(copy = false): void {
     if (!this._io) return;
     try {
-      const result = importActivities(this.room, JSON.parse(this._io.text));
+      const result = importActivities(this.room, JSON.parse(this._io.text), copy);
+      const name = (d: string) => result.room.devices?.[d]?.name ?? d;
+      if (
+        result.alsoAffected.length &&
+        !window.confirm(this._t("act_import_confirm", { devices: result.devicesReplaced.map(name).join(", "), activities: result.alsoAffected.join(", ") }))
+      ) {
+        return;
+      }
       this._emit(result.room);
-      const parts = [this._t("act_import_done", { added: Object.values(result.added).join(", ") || "–" })];
-      if (result.devicesAdded.length) parts.push(this._t("act_import_devices", { devices: result.devicesAdded.join(", ") }));
+      const parts: string[] = [];
+      if (Object.keys(result.replaced).length) parts.push(this._t("act_import_replaced", { names: Object.values(result.replaced).join(", ") }));
+      if (Object.keys(result.added).length) parts.push(this._t("act_import_done", { added: Object.values(result.added).join(", ") }));
+      if (result.devicesReplaced.length) parts.push(this._t("act_import_devices_replaced", { devices: result.devicesReplaced.map(name).join(", ") }));
+      if (result.devicesAdded.length) parts.push(this._t("act_import_devices", { devices: result.devicesAdded.map(name).join(", ") }));
       if (result.startedByDropped.length) parts.push(this._t("act_import_started_by", { names: result.startedByDropped.join(", ") }));
       this._closeIo();
       this._notice = parts.join(" · ");
@@ -1196,7 +1206,8 @@ export class EasyAvControlRoomEditor extends LitElement {
           ${exporting
             ? html`<button class="ltek-btn primary" @click=${this._ioCopy}>${this._t("profile_copy")}</button>
                 <button class="ltek-btn" @click=${this._ioDownload}><ha-icon icon="mdi:download"></ha-icon> ${this._t("act_download")}</button>`
-            : html`<button class="ltek-btn primary" ?disabled=${!d.text.trim()} @click=${this._ioImport}>${this._t("act_import")}</button>`}
+            : html`<button class="ltek-btn primary" ?disabled=${!d.text.trim()} @click=${() => this._ioImport(false)}>${this._t("act_import")}</button>
+                <button class="ltek-btn" ?disabled=${!d.text.trim()} @click=${() => this._ioImport(true)}>${this._t("act_import_copy")}</button>`}
           <button class="ltek-btn" @click=${this._closeIo}>${this._t("profile_close")}</button>
         </div>
       </div>
