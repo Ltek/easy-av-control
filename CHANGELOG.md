@@ -1,5 +1,14 @@
 # Changelog
 
+## v2026.11.22.26
+
+**Added**
+- **Export and Import of activities.** **Export** on an activity's page, **Export all** and **Import** on the
+  Activities tab. An export is JSON (copy or download) with the activities and every device they use. Import (paste
+  or choose the file) adds them to the room: a device with the same entity as one of the room's is that device, the
+  others are added, taken IDs get new ones and every reference follows. Started by is left out when another activity
+  of the room already starts on that entity. Nothing is stored until Save.
+
 ## v2026.11.22.25
 
 **Changed**

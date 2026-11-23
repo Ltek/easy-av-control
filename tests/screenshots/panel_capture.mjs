@@ -169,6 +169,11 @@ await settle(800);
 await page.getByRole('button', { name: /^TV/ }).first().click();
 await settle(3000);
 await shotBoth('activity');
+await page.locator('easy-av-control-room-editor .head-acts button', { hasText: 'Export' }).click();
+await settle(800);
+await shotBoth('activity-export');
+await page.locator('easy-av-control-room-editor dialog.io button', { hasText: 'Close' }).click();
+await settle(400);
 // The Flow is the editor: ✎ on a device opens its order, Before and settings in place
 await page.locator('easy-av-control-flow li.device button.edit').nth(2).click();
 await settle(1500);

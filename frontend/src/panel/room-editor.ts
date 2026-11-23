@@ -51,7 +51,7 @@ import {
   type ProfileView,
 } from "./device-state";
 import "./flow-view";
-import { withBefore, withoutDevice, type Before } from "./model";
+import { exportActivities, importActivities, withBefore, withoutDevice, type Before } from "./model";
 import "./ltek-form";
 import { ltekChrome, ltekPanelScale, ltekTokens } from "./ltek-styles";
 import "./remote-preview";
@@ -128,6 +128,7 @@ export class EasyAvControlRoomEditor extends LitElement {
     _powerOn: { state: true },
     _flowEditing: { state: true },
     _draftStartedBy: { state: true },
+    _io: { state: true },
   };
 
   declare hass: HomeAssistant;
@@ -156,6 +157,8 @@ export class EasyAvControlRoomEditor extends LitElement {
   /** The Flow row being edited in place: its key (flow-view rowKey) and the panel it stands for */
   declare _flowEditing?: { key: string; device?: string; panel: string };
   /** A Started by entry being added: kept here until it has an entity and a state, so the room stays valid */
+  /** The Export / Import dialog of activities */
+  declare _io?: { mode: "export" | "import"; text: string; message?: string };
   declare _draftStartedBy?: { entity_id: string; state: string; stop_state?: string };
   /** The outlet a device had when it was unticked, to bring back when it is ticked again */
   private _powerMemo = new Map<string, Obj>();
@@ -325,6 +328,7 @@ export class EasyAvControlRoomEditor extends LitElement {
     onDelete: () => void,
     beside?: TemplateResult,
     onDuplicate?: () => void,
+    onExport?: () => void,
   ): TemplateResult {
     return html`<div class="detail-head">
         <button class="back" @click=${() => this._show({ kind: "list" })}>
@@ -332,6 +336,11 @@ export class EasyAvControlRoomEditor extends LitElement {
           <span>${back}</span>
         </button>
         <span class="head-acts">
+          ${onExport
+            ? html`<button class="ltek-btn" @click=${onExport}>
+                <ha-icon icon="mdi:export"></ha-icon> ${this._t("act_export")}
+              </button>`
+            : nothing}
           ${onDuplicate
             ? html`<button class="ltek-btn" @click=${onDuplicate}>
                 <ha-icon icon="mdi:content-copy"></ha-icon> ${this._t("duplicate")}
@@ -1065,6 +1074,16 @@ export class EasyAvControlRoomEditor extends LitElement {
         ${Object.keys(this.room.devices ?? {}).length
           ? html`<button class="ltek-add" @click=${this._addActivity}>+ ${this._t("add_activity")}</button>`
           : html`<p class="ltek-hint">${this._t("needs_devices")}</p>`}
+        <div class="ltek-buttons io">
+          <button class="ltek-btn" @click=${() => this._openIo("import")}>
+            <ha-icon icon="mdi:import"></ha-icon> ${this._t("act_import")}
+          </button>
+          ${activities.length
+            ? html`<button class="ltek-btn" @click=${() => this._openIo("export", activities.map(([id]) => id))}>
+                <ha-icon icon="mdi:export"></ha-icon> ${this._t("act_export_all")}
+              </button>`
+            : nothing}
+        </div>
         ${activities.length
           ? activities.map(([id, activity]) =>
               this._row(
@@ -1077,7 +1096,100 @@ export class EasyAvControlRoomEditor extends LitElement {
             )
           : html`<p class="ltek-hint">${this._t("activities_empty")}</p>`}
       </div>
+      ${this._renderIo()}
     `;
+  }
+
+  // ------------------------------------------------------------------ export / import of activities
+
+  private async _openIo(mode: "export" | "import", ids: string[] = []): Promise<void> {
+    this._io = { mode, text: mode === "export" ? JSON.stringify(exportActivities(this.room, ids), null, 2) : "" };
+    await this.updateComplete;
+    const dialog = this.shadowRoot?.querySelector("dialog.io");
+    if (dialog instanceof HTMLDialogElement && !dialog.open) dialog.showModal();
+  }
+
+  private _closeIo(): void {
+    (this.shadowRoot?.querySelector("dialog.io") as HTMLDialogElement | null)?.close();
+    this._io = undefined;
+  }
+
+  private async _ioCopy(ev: Event): Promise<void> {
+    const button = ev.currentTarget as HTMLButtonElement;
+    const area = this.shadowRoot!.querySelector("dialog.io textarea") as HTMLTextAreaElement;
+    area.select();
+    let ok = false;
+    try {
+      ok = document.execCommand("copy");
+    } catch {
+      ok = false;
+    }
+    if (!ok) {
+      try {
+        await navigator.clipboard.writeText(area.value);
+        ok = true;
+      } catch {
+        ok = false;
+      }
+    }
+    button.textContent = this._t(ok ? "profile_copied" : "profile_copy_failed");
+  }
+
+  private _ioDownload(): void {
+    const url = URL.createObjectURL(new Blob([this._io?.text ?? ""], { type: "application/json" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `easy-av-control-activities-${this.roomId}.json`;
+    a.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  private async _ioFile(ev: Event): Promise<void> {
+    const file = (ev.target as HTMLInputElement).files?.[0];
+    if (file && this._io) this._io = { ...this._io, text: await file.text(), message: undefined };
+  }
+
+  private _ioImport(): void {
+    if (!this._io) return;
+    try {
+      const result = importActivities(this.room, JSON.parse(this._io.text));
+      this._emit(result.room);
+      const parts = [this._t("act_import_done", { added: Object.values(result.added).join(", ") || "–" })];
+      if (result.devicesAdded.length) parts.push(this._t("act_import_devices", { devices: result.devicesAdded.join(", ") }));
+      if (result.startedByDropped.length) parts.push(this._t("act_import_started_by", { names: result.startedByDropped.join(", ") }));
+      this._closeIo();
+      this._notice = parts.join(" · ");
+    } catch (err) {
+      this._io = { ...this._io, message: (err as Error).message ?? String(err) };
+    }
+  }
+
+  private _renderIo(): TemplateResult | typeof nothing {
+    const d = this._io;
+    if (!d) return nothing;
+    const exporting = d.mode === "export";
+    return html`<dialog class="io" @cancel=${this._closeIo} @click=${(ev: Event) => ev.target === ev.currentTarget && this._closeIo()}>
+      <div class="dialog-body">
+        <div class="ltek-group first">${this._t(exporting ? "act_export" : "act_import")}</div>
+        <p class="ltek-hint">${this._t(exporting ? "act_export_hint" : "act_import_hint")}</p>
+        ${exporting ? nothing : html`<input type="file" accept=".json,application/json" @change=${this._ioFile} />`}
+        <textarea
+          class="ltek-text"
+          rows="14"
+          .value=${d.text}
+          ?readonly=${exporting}
+          @input=${(ev: Event) => (this._io = { ...d, text: (ev.target as HTMLTextAreaElement).value, message: undefined })}
+        ></textarea>
+        ${d.message ? html`<p class="ltek-hint ltek-warn">${d.message}</p>` : nothing}
+        <div class="ltek-buttons">
+          ${exporting
+            ? html`<button class="ltek-btn primary" @click=${this._ioCopy}>${this._t("profile_copy")}</button>
+                <button class="ltek-btn" @click=${this._ioDownload}><ha-icon icon="mdi:download"></ha-icon> ${this._t("act_download")}</button>`
+            : html`<button class="ltek-btn primary" ?disabled=${!d.text.trim()} @click=${this._ioImport}>${this._t("act_import")}</button>`}
+          <button class="ltek-btn" @click=${this._closeIo}>${this._t("profile_close")}</button>
+        </div>
+      </div>
+    </dialog>`;
   }
 
   private _setActivity(id: string, activity: Activity): void {
@@ -1106,7 +1218,9 @@ export class EasyAvControlRoomEditor extends LitElement {
         () => this._deleteActivity(id, activity),
         this._runButtons(id),
         () => this._duplicateActivity(id, activity),
+        () => this._openIo("export", [id]),
       )}
+      ${this._renderIo()}
 
       ${this._card(this._t("section_flow"), `${this._t("hint_flow")} ${this._t("flow.edit_hint")}`, this._renderFlowEditor(id, activity))}
 
@@ -2587,6 +2701,31 @@ export class EasyAvControlRoomEditor extends LitElement {
     }
     .ltek-item .lead.bad {
       color: var(--error-color, #db4437);
+    }
+    .io {
+      margin-top: 4px;
+    }
+    dialog.io {
+      border: 1px solid var(--ltek-c-accent);
+      border-radius: var(--ltek-r-panel);
+      background: var(--card-background-color, #1c1c1c);
+      color: var(--ltek-c-text);
+      padding: 0;
+      width: min(640px, 92vw);
+    }
+    dialog.io::backdrop {
+      background: rgba(0, 0, 0, 0.55);
+    }
+    dialog.io .dialog-body {
+      display: flex;
+      flex-direction: column;
+      gap: var(--ltek-sp-3);
+      padding: 16px;
+    }
+    dialog.io textarea.ltek-text {
+      font-family: var(--code-font-family, monospace);
+      font-size: var(--ltek-fs-small);
+      resize: vertical;
     }
     .head-acts {
       display: flex;

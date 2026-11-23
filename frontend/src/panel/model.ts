@@ -431,3 +431,103 @@ export function withBefore(activity: Activity, deviceId: string, before: Before 
   else delete all[deviceId];
   return clean({ ...activity, before: Object.keys(all).length ? all : undefined }) as Activity;
 }
+
+/** What an activity export holds: the activities, and every device they refer to. */
+export const ACTIVITY_EXPORT_FORMAT = "easy_av_control.activities";
+/** Marks a device id renamed during an import, so two renames never meet */
+const MARK = "⟦eac⟧";
+
+/** The devices an activity refers to: its own, its checks', steps', waits' and remote buttons'. */
+export function activityDevices(activity: Activity): string[] {
+  const ids = new Set<string>(activity.devices ?? []);
+  for (const c of (activity.checks as Obj[] | undefined) ?? []) if (typeof c.device === "string") ids.add(c.device);
+  for (const s of activity.steps ?? []) if (s.device) ids.add(s.device);
+  for (const [d, b] of Object.entries(activity.before ?? {})) {
+    ids.add(d);
+    for (const w of b.wait_for ?? []) ids.add(w.device);
+  }
+  const remote = activity.remote ?? {};
+  for (const g of GROUPS) if (typeof remote[g] === "string") ids.add(remote[g] as string);
+  for (const b of (remote.buttons as Obj[] | undefined) ?? []) if (b && typeof b.device === "string") ids.add(b.device);
+  for (const s of (remote.settings as Obj[] | undefined) ?? []) if (s && typeof s.device === "string") ids.add(s.device);
+  return [...ids];
+}
+
+/** An export of some of a room's activities, with the devices they need. */
+export function exportActivities(room: Room, ids: string[]): Obj {
+  const activities: Record<string, Activity> = {};
+  const devices: Record<string, Device> = {};
+  for (const id of ids) {
+    const activity = room.activities?.[id];
+    if (!activity) continue;
+    activities[id] = JSON.parse(JSON.stringify(activity)) as Activity;
+    for (const d of activityDevices(activity)) {
+      if (room.devices?.[d]) devices[d] = JSON.parse(JSON.stringify(room.devices[d])) as Device;
+    }
+  }
+  return { format: ACTIVITY_EXPORT_FORMAT, version: 1, activities, devices };
+}
+
+export interface ActivityImport {
+  room: Room;
+  /** New activity id -> its name */
+  added: Record<string, string>;
+  /** Devices of the export that this room has already (same entity): export id -> this room's id */
+  matched: Record<string, string>;
+  /** Devices added to the room */
+  devicesAdded: string[];
+  /** Started by left out, because another activity of the room starts on the same entity */
+  startedByDropped: string[];
+}
+
+/**
+ * Add an export's activities to a room, unsaved. A device of the export whose entity the room has already is that
+ * device; any other is added. Activities and devices whose ID is taken get a new one, and every reference follows.
+ * Throws Error for something that isn't an activity export.
+ */
+export function importActivities(room: Room, data: unknown): ActivityImport {
+  const env = data as Obj;
+  if (!env || typeof env !== "object" || env.format !== ACTIVITY_EXPORT_FORMAT || typeof env.activities !== "object") {
+    throw new Error("not an Easy AV Control activity export");
+  }
+  const incomingDevices = (env.devices ?? {}) as Record<string, Device>;
+  const devices: Record<string, Device> = { ...(room.devices ?? {}) };
+  const map: Record<string, string> = {};
+  const matched: Record<string, string> = {};
+  const devicesAdded: string[] = [];
+  for (const [id, device] of Object.entries(incomingDevices)) {
+    const same = Object.entries(devices).find(([, d]) => d.entity_id && d.entity_id === device.entity_id);
+    if (same) {
+      map[id] = same[0];
+      matched[id] = same[0];
+      continue;
+    }
+    const to = uniqueKey(id, Object.keys(devices));
+    devices[to] = device;
+    map[id] = to;
+    devicesAdded.push(to);
+  }
+  const activities: Record<string, Activity> = { ...(room.activities ?? {}) };
+  const added: Record<string, string> = {};
+  const startedByDropped: string[] = [];
+  const taken = new Set(
+    Object.values(room.activities ?? {}).flatMap((a) => (a.started_by ?? []).map((s) => s.entity_id)),
+  );
+  for (const [id, raw] of Object.entries(env.activities as Record<string, Activity>)) {
+    // Rename the export's device ids to this room's, through a scratch room
+    let scratch: Room = { devices: { ...incomingDevices }, activities: { [id]: raw } };
+    for (const [from, to] of Object.entries(map)) {
+      if (from !== to) scratch = renameDevice(scratch, from, `${MARK}${to}`);
+    }
+    let activity = scratch.activities![id];
+    activity = JSON.parse(JSON.stringify(activity).split(MARK).join("")) as Activity;
+    if ((activity.started_by ?? []).some((s) => taken.has(s.entity_id))) {
+      activity = clean({ ...activity, started_by: undefined }) as Activity;
+      startedByDropped.push(activity.name ?? id);
+    }
+    const key = uniqueKey(id, Object.keys(activities));
+    activities[key] = activity;
+    added[key] = activity.name ?? key;
+  }
+  return { room: { ...room, devices, activities }, added, matched, devicesAdded, startedByDropped };
+}
