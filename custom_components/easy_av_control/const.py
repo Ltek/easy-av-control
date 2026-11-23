@@ -8,7 +8,7 @@ DEVICE_NAME_PREFIX: Final = "AV"
 
 # Config entry schema version (see migration.py)
 CONFIG_VERSION: Final = 2
-CONFIG_MINOR_VERSION: Final = 2
+CONFIG_MINOR_VERSION: Final = 3
 
 # Configuration keys (schema v2: rooms -> devices / activities -> steps)
 CONF_ROOMS: Final = "rooms"
@@ -159,6 +159,13 @@ PROBLEM_SCOPE: Final = {
 CONF_KEEP_CHECKING: Final = "keep_checking"
 # An activity that is off: it can't be started, and no card, select or Started by offers it
 CONF_ENABLED: Final = "enabled"
+# Per activity, per device: what happens to the device in this activity's Flow (2.3). The device's own keys of the
+# same names are only the starting values
+CONF_FLOW: Final = "flow"
+FLOW_KEYS: Final = (
+    "ready", "delay_after_power", "delay_after_on", "delay_after_off", "turn_off_after",
+    "wait_on", "wait_off", "timeout_on", "timeout_off", "debounce", "on_failure",
+)
 FAILURE_WARN: Final = "warn"
 FAILURE_STOP: Final = "stop"
 FAILURE_RETRY: Final = "retry"

@@ -54,6 +54,8 @@ export interface Activity extends Obj {
   steps?: Step[];
   checks?: Obj[];
   before?: Record<string, Before>;
+  /** What happens to each device in this activity: waits, connection check, boot and cool-down times */
+  flow?: Record<string, Obj>;
   /** Entities whose state starts the activity (a Harmony hub's activity), and optionally shuts it down */
   /** Monitor while active, in seconds; 0 turns a check off */
   monitor?: { lost_after?: number; picture_lost_after?: number; idle_after?: number; idle_warning?: number };
@@ -370,6 +372,7 @@ export function renameDevice(room: Room, from: string, to: string): Room {
       steps: a.steps?.map((s) => (s.device === from ? { ...s, device: to } : s)),
       checks: a.checks?.map((c) => (c.device === from ? { ...c, device: to } : c)),
       before,
+      flow: a.flow ? Object.fromEntries(Object.entries(a.flow).map(([d, f]) => [swap(d) as string, f])) : undefined,
       remote,
     });
   }
@@ -418,10 +421,13 @@ export function withoutDevice(activity: Activity, deviceId: string): Activity {
     const next = clean({ ...b, wait_for: waits.length ? waits : undefined }) as Before;
     if (Object.keys(next).some((k) => k === "delay" || k === "wait_for")) before[d] = next;
   }
+  const flow = { ...(activity.flow ?? {}) };
+  delete flow[deviceId];
   return clean({
     ...activity,
     devices: (activity.devices ?? []).filter((d) => d !== deviceId),
     before: Object.keys(before).length ? before : undefined,
+    flow: Object.keys(flow).length ? flow : undefined,
   }) as Activity;
 }
 
@@ -476,7 +482,7 @@ export interface ActivityImport {
   added: Record<string, string>;
   /** Activities replaced by the file's (id -> name) */
   replaced: Record<string, string>;
-  /** Devices replaced by the file's (this room's id), matched by entity */
+  /** Devices of the file the room has already (same entity): kept as they are (this room's id) */
   devicesReplaced: string[];
   /** Devices added to the room */
   devicesAdded: string[];
@@ -512,10 +518,19 @@ export function importActivities(room: Room, data: unknown, copy = false): Activ
   const map: Record<string, string> = {};
   const devicesReplaced: string[] = [];
   const devicesAdded: string[] = [];
+  // An export from before 2.3 has the actions on its devices: they belong to its activities' Flows
+  const legacy: Record<string, Obj> = {};
   for (const [id, device] of Object.entries(incomingDevices)) {
+    const actions: Obj = {};
+    for (const key of FLOW_KEYS) if (device[key] !== undefined) actions[key] = device[key];
+    if (Object.keys(actions).length) legacy[id] = actions;
+  }
+  for (const [id, raw] of Object.entries(incomingDevices)) {
+    const device = { ...raw } as Device;
+    for (const key of FLOW_KEYS) delete device[key];
     const same = Object.entries(devices).find(([d, existing]) => existing.entity_id && existing.entity_id === device.entity_id && !devicesAdded.includes(d));
     if (same) {
-      devices[same[0]] = JSON.parse(JSON.stringify(device)) as Device;
+      // The room's device stays as it is: only the Flow is imported
       map[id] = same[0];
       devicesReplaced.push(same[0]);
       continue;
@@ -531,7 +546,9 @@ export function importActivities(room: Room, data: unknown, copy = false): Activ
   const startedByDropped: string[] = [];
   for (const [id, raw] of Object.entries(env.activities as Record<string, Activity>)) {
     // Rename the export's device ids to this room's, through a scratch room
-    let scratch: Room = { devices: { ...incomingDevices }, activities: { [id]: raw } };
+    const withLegacy: Activity = { ...raw, flow: { ...Object.fromEntries((raw.devices ?? []).filter((d) => legacy[d]).map((d) => [d, legacy[d]])), ...(raw.flow ?? {}) } };
+    if (!Object.keys(withLegacy.flow ?? {}).length) delete withLegacy.flow;
+    let scratch: Room = { devices: { ...incomingDevices }, activities: { [id]: withLegacy } };
     for (const [from, to] of Object.entries(map)) {
       if (from !== to) scratch = renameDevice(scratch, from, `${MARK}${to}`);
     }
@@ -557,10 +574,7 @@ export function importActivities(room: Room, data: unknown, copy = false): Activ
     activities[key] = activity;
     added[key] = activity.name ?? key;
   }
-  const touched = new Set([...Object.keys(added), ...Object.keys(replaced)]);
-  const alsoAffected = Object.entries(activities)
-    .filter(([k, a]) => !touched.has(k) && activityDevices(a).some((d) => devicesReplaced.includes(d)))
-    .map(([k, a]) => a.name ?? k);
+  const alsoAffected: string[] = [];
   return {
     room: { ...room, devices, activities },
     added,
@@ -570,4 +584,38 @@ export function importActivities(room: Room, data: unknown, copy = false): Activ
     alsoAffected,
     startedByDropped,
   };
+}
+
+/** The device keys that are actions of a Flow, not what the device is (2.3). */
+export const FLOW_KEYS = [
+  "ready",
+  "delay_after_power",
+  "delay_after_on",
+  "delay_after_off",
+  "turn_off_after",
+  "wait_on",
+  "wait_off",
+  "timeout_on",
+  "timeout_off",
+  "debounce",
+  "on_failure",
+] as const;
+
+/** A device as an activity uses it: the device, with what the activity's Flow sets for it on top. */
+export function flowDevice(room: Room, activity: Activity, deviceId: string): Device {
+  return { ...(room.devices?.[deviceId] ?? ({} as Device)), ...(activity.flow?.[deviceId] ?? {}) } as Device;
+}
+
+/** The activity with one device's Flow settings taken from a whole device (its FLOW_KEYS); empty ones go. */
+export function withFlow(activity: Activity, deviceId: string, device: Device, base: Device): Activity {
+  const flow: Obj = {};
+  for (const key of FLOW_KEYS) {
+    if (device[key] !== undefined) flow[key] = device[key];
+    // Turned off here, though the device itself (an old setup) has one
+    else if (key === "ready" && base.ready) flow.ready = null;
+  }
+  const all = { ...(activity.flow ?? {}) };
+  if (Object.keys(flow).length) all[deviceId] = flow;
+  else delete all[deviceId];
+  return { ...activity, flow: Object.keys(all).length ? all : undefined };
 }

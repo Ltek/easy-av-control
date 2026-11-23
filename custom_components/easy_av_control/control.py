@@ -490,7 +490,9 @@ def describe_command(
     ``via`` is ``activity_commands``, ``device_commands``, ``remote``,
     ``media_player`` or None (the button does nothing).
     """
-    devices: dict[str, Any] = room[CONF_DEVICES]
+    from .model import activity_devices
+
+    devices: dict[str, Any] = activity_devices(room, activity)
     if device_id is None:
         if command in activity[CONF_COMMANDS]:
             return {

@@ -292,6 +292,12 @@ activities:
 | `on_failure` | `warn` | When the state doesn't come in time, or the device reports an error: `warn` (go on), `stop` (stop the activity; when turning off: leave the outlet on) or `retry` (switch it once more, then warn). One value, or `{turn_on: …, turn_off: …}` |
 | `commands` | — | Remote buttons as Home Assistant actions, see [Remote control](#remote-control) |
 
+Since 2.3 (build 2026.11.23.30) `ready`, `delay_after_power`, `delay_after_on`, `delay_after_off`, `turn_off_after`,
+`wait_on`, `wait_off`, `timeout_on`, `timeout_off`, `debounce` and `on_failure` are what happens to the device in a
+Flow, so each activity sets them for its own devices, under `flow: {<device>: {...}}`; the panel edits them with ✎ on
+the device in the Flow. On the device they are only the starting values (an older setup is moved into its activities
+on update).
+
 `ready` takes:
 
 | Key | Default | Description |

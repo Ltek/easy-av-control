@@ -51,7 +51,7 @@ import {
   type ProfileView,
 } from "./device-state";
 import "./flow-view";
-import { exportActivities, importActivities, withBefore, withoutDevice, type Before } from "./model";
+import { exportActivities, flowDevice, importActivities, withBefore, withFlow, withoutDevice, type Before } from "./model";
 import "./ltek-form";
 import { ltekChrome, ltekPanelScale, ltekTokens } from "./ltek-styles";
 import "./remote-preview";
@@ -98,8 +98,6 @@ const DEVICE_SECTIONS: [string, string][] = [
   ["section_device", "mdi:television"],
   ["section_state", "mdi:state-machine"],
   ["section_power", "mdi:power-socket-eu"],
-  ["section_delays", "mdi:timer-sand"],
-  ["section_ready", "mdi:lan-connect"],
 ];
 const DEVICE_HINTS: Record<string, string> = {
   section_device: "hint_device",
@@ -802,7 +800,6 @@ export class EasyAvControlRoomEditor extends LitElement {
           used ? data : { ...data, ...(this._powerMemo.get(id) ?? {}) },
           [
             { name: "power_switch", selector: { entity: { filter: { domain: ["switch", "input_boolean", "light"] } } } },
-            { name: "delay_after_power", selector: SHORT },
           ],
           !used,
         )}
@@ -839,9 +836,6 @@ export class EasyAvControlRoomEditor extends LitElement {
         .map((p) => ({ value: p.id, label: `${p.name} (${this._t(p.source === "user" ? "profiles_yours" : "profiles_builtin")})` })),
     ];
     const hasStatus = !!detect?.state;
-    const options = (prefix: string, values: readonly string[]) =>
-      values.map((v) => ({ value: v, label: this._t(`${prefix}.${v}`) }));
-    const offFailures = FAILURES.map((v) => ({ value: v, label: this._t(v === "stop" ? "failure_off.stop" : `failure.${v}`) }));
     const schema: Obj[] = [
       ...(profileOptions.length > 1
         ? [{ name: "profile", selector: { select: { options: profileOptions, mode: "dropdown" } } }]
@@ -859,20 +853,6 @@ export class EasyAvControlRoomEditor extends LitElement {
           },
         },
       },
-      ...(hasStatus
-        ? [
-            { name: "wait_on", selector: { select: { mode: "dropdown", options: options("wait", WAIT_MODES) } } },
-            { name: "timeout_on", selector: slider(600, 5, 5) },
-            { name: "on_failure_on", selector: { select: { mode: "dropdown", options: options("failure", FAILURES) } } },
-            { name: "wait_off", selector: { select: { mode: "dropdown", options: options("wait", WAIT_MODES) } } },
-            { name: "timeout_off", selector: slider(900, 5, 5) },
-            { name: "on_failure_off", selector: { select: { mode: "dropdown", options: offFailures } } },
-            { name: "debounce", selector: slider(30, 0.5) },
-            ...(detect?.found?.picture
-              ? [{ name: "on_failure_picture", selector: { select: { mode: "dropdown", options: options("failure", ["warn", "stop"]) } } }]
-              : []),
-          ]
-        : []),
     ];
     return html`${this._renderDetected(id, device, detect)}
       ${detect && !hasStatus ? html`<p class="ltek-hint">${this._t("state_fixed_only")}</p>` : nothing}
@@ -1166,17 +1146,10 @@ export class EasyAvControlRoomEditor extends LitElement {
     try {
       const result = importActivities(this.room, JSON.parse(this._io.text), copy);
       const name = (d: string) => result.room.devices?.[d]?.name ?? d;
-      if (
-        result.alsoAffected.length &&
-        !window.confirm(this._t("act_import_confirm", { devices: result.devicesReplaced.map(name).join(", "), activities: result.alsoAffected.join(", ") }))
-      ) {
-        return;
-      }
       this._emit(result.room);
       const parts: string[] = [];
       if (Object.keys(result.replaced).length) parts.push(this._t("act_import_replaced", { names: Object.values(result.replaced).join(", ") }));
       if (Object.keys(result.added).length) parts.push(this._t("act_import_done", { added: Object.values(result.added).join(", ") }));
-      if (result.devicesReplaced.length) parts.push(this._t("act_import_devices_replaced", { devices: result.devicesReplaced.map(name).join(", ") }));
       if (result.devicesAdded.length) parts.push(this._t("act_import_devices", { devices: result.devicesAdded.map(name).join(", ") }));
       if (result.startedByDropped.length) parts.push(this._t("act_import_started_by", { names: result.startedByDropped.join(", ") }));
       this._closeIo();
@@ -1384,15 +1357,14 @@ export class EasyAvControlRoomEditor extends LitElement {
                   : nothing}
               </div>
               <h4>${this._t("flow.before")}</h4>
-              ${this._renderBefore(id, activity, deviceId)}
-              <h4>${this._t("section_device")}</h4>`
-          : html`<h4>${this._t(target.panel)}</h4>`}
+              ${this._renderBefore(id, activity, deviceId)}`
+          : nothing}
+        <h4>${this._t("flow.device_actions", { device: device.name ?? deviceId })}</h4>
+        ${this._renderDeviceFlow(id, activity, deviceId)}
         <p class="ltek-hint">
-          ${this._t("flow.device_shared")}
+          ${this._t("flow.device_identity")}
           <button class="link" @click=${() => this._show({ kind: "device", id: deviceId })}>${this._t("flow.open_device")}</button>
         </p>
-        ${this._deviceSection(deviceId, device, header ? "section_device" : target.panel)}
-        ${header ? this._deviceSection(deviceId, device, "section_delays") : nothing}
         ${done}`;
     }
     switch (target.panel) {
@@ -1411,6 +1383,93 @@ export class EasyAvControlRoomEditor extends LitElement {
       default:
         return done;
     }
+  }
+
+  /** What happens to a device in this activity: connection check, boot time, the waits on and off, failures. */
+  private _renderDeviceFlow(id: string, activity: Activity, deviceId: string): TemplateResult {
+    const base = this.room.devices?.[deviceId];
+    if (!base) return html``;
+    const merged = flowDevice(this.room, activity, deviceId);
+    const detect = this._detectFor(base);
+    const hasStatus = !!detect?.state;
+    const data = { ...stateFormData(merged, detect), ...this._deviceData(merged) };
+    const options = (prefix: string, values: readonly string[]) => values.map((v) => ({ value: v, label: this._t(`${prefix}.${v}`) }));
+    const offFailures = FAILURES.map((v) => ({ value: v, label: this._t(v === "stop" ? "failure_off.stop" : `failure.${v}`) }));
+    const readyOn = merged.ready !== undefined && merged.ready !== null;
+    const schema: Obj[] = [
+      { name: "ready_enabled", selector: { boolean: {} } },
+      ...(readyOn
+        ? [
+            { name: "ready_entity", selector: { entity: {} } },
+            { name: "ready_state", selector: { text: {} } },
+            { name: "ready_timeout", selector: SECONDS },
+            { name: "ready_reload", selector: { boolean: {} } },
+            {
+              name: "ready_on_timeout",
+              selector: {
+                select: {
+                  mode: "dropdown",
+                  options: [
+                    { value: "abort", label: this._t("on_timeout_abort") },
+                    { value: "continue", label: this._t("on_timeout_continue") },
+                  ],
+                },
+              },
+            },
+          ]
+        : []),
+      ...(base.power_switch ? [{ name: "delay_after_power", selector: SHORT }] : []),
+      ...(hasStatus
+        ? [
+            { name: "wait_on", selector: { select: { mode: "dropdown", options: options("wait", WAIT_MODES) } } },
+            { name: "timeout_on", selector: slider(600, 5, 5) },
+            { name: "debounce", selector: slider(30, 0.5) },
+            { name: "on_failure_on", selector: { select: { mode: "dropdown", options: options("failure", FAILURES) } } },
+          ]
+        : []),
+      { name: "delay_after_on", selector: SECONDS },
+      ...(hasStatus
+        ? [
+            { name: "wait_off", selector: { select: { mode: "dropdown", options: options("wait", WAIT_MODES) } } },
+            { name: "timeout_off", selector: slider(900, 5, 5) },
+            { name: "on_failure_off", selector: { select: { mode: "dropdown", options: offFailures } } },
+          ]
+        : []),
+      { name: "delay_after_off", selector: SECONDS },
+      { name: "turn_off_after", selector: slider(1800, 10) },
+      ...(detect?.found?.picture
+        ? [{ name: "on_failure_picture", selector: { select: { mode: "dropdown", options: options("failure", ["warn", "stop"]) } } }]
+        : []),
+    ];
+    return html`${hasStatus ? nothing : html`<p class="ltek-hint">${this._t("state_fixed_only")}</p>`}
+      <ltek-form
+        .hass=${this.hass}
+        .data=${data}
+        .schema=${schema}
+        .computeLabel=${(s: { name: string }) => this._t(`field.${s.name}`)}
+        .computeHelper=${this._helper}
+        @value-changed=${(ev: CustomEvent) => {
+          const v = { ...data, ...(ev.detail.value as Obj) };
+          const next = applyStateForm(merged, v, detect);
+          for (const key of ["delay_after_power", "delay_after_on", "delay_after_off", "turn_off_after"] as const) {
+            const n = Number(v[key]);
+            if (n) next[key] = n;
+            else delete next[key];
+          }
+          if (v.ready_enabled) {
+            next.ready = clean({
+              entity_id: v.ready_entity as string | undefined,
+              state: splitStates(v.ready_state as string | undefined),
+              timeout: v.ready_timeout as number | undefined,
+              reload_integration: v.ready_reload as boolean | undefined,
+              on_timeout: v.ready_on_timeout as string | undefined,
+            });
+          } else {
+            delete next.ready;
+          }
+          this._setActivity(id, withFlow(activity, deviceId, next, base));
+        }}
+      ></ltek-form>`;
   }
 
   /** Before a device is turned on: a delay, then the activity's devices it waits for. */
@@ -1764,15 +1823,15 @@ export class EasyAvControlRoomEditor extends LitElement {
         return;
       }
     }
-    const device = deviceId ? this.room.devices?.[deviceId] : undefined;
-    if (!device || !deviceId) return;
-    const next: Device = { ...device };
+    const base = deviceId ? this.room.devices?.[deviceId] : undefined;
+    if (!base || !deviceId) return;
+    const next: Device = { ...flowDevice(this.room, activity, deviceId) };
     if (row.kind === "status") next.wait_on = "none";
-    else if (row.kind === "wait") next.delay_after_on = 0;
-    else if (row.kind === "boot") next.delay_after_power = 0;
+    else if (row.kind === "wait") delete next.delay_after_on;
+    else if (row.kind === "boot") delete next.delay_after_power;
     else if (row.kind === "ready") delete next.ready;
     else return;
-    this._emit({ ...this.room, devices: { ...this.room.devices, [deviceId]: clean(next) } });
+    this._setActivity(id, withFlow(activity, deviceId, next, base));
   }
 
   /** The line that starts the Remote control card's settings. */

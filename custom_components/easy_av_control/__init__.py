@@ -56,7 +56,7 @@ from .const import (
 from .coordinator import EasyAVControlCoordinator
 from .detect import async_get_seen
 from .migration import migrate_checks, migrate_v1_to_v2
-from .model import expected_unique_ids
+from .model import expected_unique_ids, move_device_actions
 from .profile_library import async_get_library
 from .sidebar import async_register_panel
 
@@ -260,12 +260,15 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             entry,
             data=migrate_v1_to_v2(dict(entry.data)),
             version=2,
-            minor_version=CONFIG_MINOR_VERSION,
+            minor_version=2,
         )
     elif entry.minor_version < 2:
         _LOGGER.info("Moving Easy AV Control's picture steps to checks")
+        hass.config_entries.async_update_entry(entry, data=migrate_checks(dict(entry.data)), minor_version=2)
+    if entry.minor_version < 3:
+        _LOGGER.info("Moving Easy AV Control's device waits and delays into the activities' Flows")
         hass.config_entries.async_update_entry(
-            entry, data=migrate_checks(dict(entry.data)), minor_version=CONFIG_MINOR_VERSION
+            entry, data=move_device_actions(dict(entry.data)), minor_version=CONFIG_MINOR_VERSION
         )
 
     return True

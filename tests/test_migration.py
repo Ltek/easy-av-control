@@ -11,7 +11,7 @@ from homeassistant.core import HomeAssistant
 from .common import living_room
 from custom_components.easy_av_control.const import DOMAIN
 from custom_components.easy_av_control.migration import migrate_v1_to_v2
-from custom_components.easy_av_control.model import validate_config
+from custom_components.easy_av_control.model import move_device_actions, validate_config
 
 V1_DATA = {
     "rooms": {
@@ -317,13 +317,12 @@ async def test_async_migrate_entry(hass: HomeAssistant) -> None:
 
     assert entry.state is ConfigEntryState.LOADED
     assert entry.version == 2
-    assert entry.minor_version == 2
-    assert entry.data == migrate_v1_to_v2(V1_DATA)
-    assert entry.data["rooms"]["wohnzimmer"]["devices"]["epson_beamer"] == {
-        "entity_id": "media_player.epson_beamer",
-        "delay_after_on": 10,
-        "delay_after_off": 10,
-    }
+    assert entry.minor_version == 3
+    assert entry.data == move_device_actions(migrate_v1_to_v2(V1_DATA))
+    # The device keeps what it is; its delays are in the Flows of the activities that use it
+    assert entry.data["rooms"]["wohnzimmer"]["devices"]["epson_beamer"] == {"entity_id": "media_player.epson_beamer"}
+    flows = [a.get("flow", {}).get("epson_beamer") for a in entry.data["rooms"]["wohnzimmer"]["activities"].values()]
+    assert {"delay_after_on": 10} in [{k: v for k, v in f.items() if k == "delay_after_on"} for f in flows if f]
 
 
 async def test_async_migrate_entry_refuses_downgrade(hass: HomeAssistant) -> None:
@@ -342,7 +341,19 @@ async def test_current_entry_not_migrated(hass: HomeAssistant) -> None:
     entry.add_to_hass(hass)
 
     assert await hass.config_entries.async_setup(entry.entry_id)
-    assert entry.data == data
+    assert entry.data == move_device_actions(data)
+
+
+async def test_device_actions_move_into_the_flows(hass: HomeAssistant) -> None:
+    """2.2 -> 2.3: each activity gets its devices' waits and delays; the devices keep only what they are."""
+    data = living_room()
+    entry = MockConfigEntry(domain=DOMAIN, version=2, minor_version=2, data=data)
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    room = entry.data["rooms"]["wz"]
+    assert "ready" not in room["devices"]["beamer"] and "delay_after_off" not in room["devices"]["beamer"]
+    assert room["activities"]["tv"]["flow"]["beamer"]["delay_after_off"] == 180
+    assert room["activities"]["musik"]["flow"] == {"onkyo": {"ready": data["rooms"]["wz"]["devices"]["onkyo"]["ready"]}}
 
 
 async def test_picture_steps_move_to_checks_on_setup(hass: HomeAssistant, devices) -> None:
@@ -355,7 +366,7 @@ async def test_picture_steps_move_to_checks_on_setup(hass: HomeAssistant, device
     entry.add_to_hass(hass)
 
     assert await hass.config_entries.async_setup(entry.entry_id)
-    assert entry.minor_version == 2
+    assert entry.minor_version == 3
     moved = next(iter(entry.data["rooms"]["wz"]["activities"].values()))
     assert moved["checks"] == [{"device": device}]
     assert all(step["type"] != "wait_picture" for step in moved["steps"])

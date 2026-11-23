@@ -120,6 +120,7 @@ from .const import (
     CONF_DEVICES,
     CONF_ENABLED,
     CONF_ENTITY_ID,
+    CONF_FLOW,
     CONF_NAME,
     CONF_OFF_OPTION,
     CONF_ON_START,
@@ -209,6 +210,7 @@ from .device_timings import MAX_SAMPLES, add_sample, is_slow, typical
 from .history import RunRecorder, history_of
 from .model import (
     CONF_DELAY_AFTER,
+    activity_devices,
     async_validate_config,
     find_missing_entities,
     problem_unique_id,
@@ -1020,9 +1022,9 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         nothing runs. Errors are raised, so the caller sees them.
         """
         room = self.rooms[room_id]
-        devices: dict[str, Any] = room[CONF_DEVICES]
         activity_id = self.runtime(room_id).activity
         activity = room[CONF_ACTIVITIES].get(activity_id) if activity_id else None
+        devices: dict[str, Any] = activity_devices(room, activity)
         placeholders = {"room": room.get(CONF_NAME, room_id), "command": command}
         variables = {"command": command, "value": value}
 
@@ -1129,7 +1131,7 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         rt = self.runtime(room_id)
         room = self.rooms[room_id]
         activity = room[CONF_ACTIVITIES][activity_id]
-        devices: dict[str, Any] = room[CONF_DEVICES]
+        devices: dict[str, Any] = activity_devices(room, activity)
         new_devices: list[str] = activity[CONF_DEVICES]
         steps: list[dict[str, Any]] = activity[CONF_STEPS]
         checks: list[dict[str, Any]] = activity.get(CONF_CHECKS) or []
@@ -1315,7 +1317,7 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Smart switching: turn off what the next activity does not need."""
         rt = self.runtime(room_id)
         room = self.rooms[room_id]
-        devices = room[CONF_DEVICES]
+        devices = activity_devices(room, room[CONF_ACTIVITIES].get(previous))
         old = room[CONF_ACTIVITIES].get(previous, {}).get(CONF_DEVICES, [])
         unused = [d for d in reversed(old) if d not in new_devices]
         if not unused:
@@ -1729,6 +1731,9 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             for check in activity.get(CONF_CHECKS) or []:
                 if check.get(CONF_ENTITY_ID):
                     out.add(check[CONF_ENTITY_ID])
+            for flow in (activity.get(CONF_FLOW) or {}).values():
+                if (flow.get(CONF_READY) or {}).get(CONF_ENTITY_ID):
+                    out.add(flow[CONF_READY][CONF_ENTITY_ID])
         return sorted(out)
 
     def entity_map(self, room_id: str) -> dict[str, list[dict[str, Any]]]:
@@ -1775,6 +1780,8 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 add(check.get(CONF_ENTITY_ID), "check", activity=activity_id, device=check[CONF_DEVICE])
             for trigger in activity.get(CONF_STARTED_BY) or []:
                 add(trigger[CONF_ENTITY_ID], "started_by", activity=activity_id)
+            for device_id, flow in (activity.get(CONF_FLOW) or {}).items():
+                add((flow.get(CONF_READY) or {}).get(CONF_ENTITY_ID), "ready", device=device_id, activity=activity_id)
         return {
             "created": created,
             "used": [{"entity_id": e, "roles": r} for e, r in sorted(used.items())],
@@ -1851,7 +1858,7 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._changed()
 
         if activity is not None:
-            devices = room[CONF_DEVICES]
+            devices = activity_devices(room, activity)
             device_ids: list[str] = activity[CONF_DEVICES]
             hook = self._start_hook(room_id, activity_id, CONF_ON_STOP, context)
             try:

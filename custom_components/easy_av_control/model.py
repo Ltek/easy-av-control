@@ -44,6 +44,7 @@ Layout of ``entry.data``::
 """
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
 from typing import Any
 
@@ -80,6 +81,7 @@ from .const import (
     CONF_ENABLED,
     CONF_ENTITY,
     CONF_ENTITY_ID,
+    CONF_FLOW,
     CONF_GRACE,
     CONF_ICON,
     CONF_ID,
@@ -141,6 +143,7 @@ from .const import (
     FAILURE_ACTIONS,
     FAILURE_STOP,
     FAILURE_WARN,
+    FLOW_KEYS,
     ON_TIMEOUT_ABORT,
     ON_TIMEOUT_CONTINUE,
     ON_TIMEOUT_OPTIONS,
@@ -296,6 +299,60 @@ DEVICE_SCHEMA = vol.Schema(
         vol.Optional(CONF_SETTINGS): vol.Any(None, [_device_setting]),
     }
 )
+
+# What happens to a device in one activity's Flow: the same keys as the device's, without defaults (absent: the
+# device's value, then the default)
+DEVICE_FLOW_SCHEMA = vol.Schema(
+    {
+        vol.Optional(CONF_READY): vol.Any(None, READY_SCHEMA),
+        vol.Optional(CONF_DELAY_AFTER_POWER): _SECONDS,
+        vol.Optional(CONF_DELAY_AFTER_ON): _SECONDS,
+        vol.Optional(CONF_DELAY_AFTER_OFF): _SECONDS,
+        vol.Optional(CONF_TURN_OFF_AFTER): vol.Any(None, _SECONDS),
+        vol.Optional(CONF_WAIT_ON): vol.In(WAIT_MODES),
+        vol.Optional(CONF_WAIT_OFF): vol.In(WAIT_MODES),
+        vol.Optional(CONF_TIMEOUT_ON): vol.All(vol.Coerce(float), vol.Range(min=0.1, max=3600)),
+        vol.Optional(CONF_TIMEOUT_OFF): vol.All(vol.Coerce(float), vol.Range(min=0.1, max=3600)),
+        vol.Optional(CONF_DEBOUNCE): vol.All(vol.Coerce(float), vol.Range(min=0, max=60)),
+        vol.Optional(CONF_ON_FAILURE): ON_FAILURE_SCHEMA,
+    }
+)
+
+
+def activity_devices(room: dict[str, Any], activity: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
+    """The room's devices as the activity uses them: each device with what its Flow sets for it on top."""
+    devices: dict[str, dict[str, Any]] = room[CONF_DEVICES]
+    flow = (activity or {}).get(CONF_FLOW) or {}
+    if not flow:
+        return devices
+    return {d: ({**device, **flow[d]} if d in flow else device) for d, device in devices.items()}
+
+
+def move_device_actions(data: dict[str, Any]) -> dict[str, Any]:
+    """2.2 -> 2.3: a device's waits, checks and delays move into the Flow of every activity that uses it."""
+    out = copy.deepcopy(data)
+    for room in (out.get(CONF_ROOMS) or {}).values():
+        devices = room.get(CONF_DEVICES) or {}
+        moved = {
+            d: {k: device[k] for k in FLOW_KEYS if k in device}
+            for d, device in devices.items()
+            if isinstance(device, dict)
+        }
+        for activity in (room.get(CONF_ACTIVITIES) or {}).values():
+            if not isinstance(activity, dict):
+                continue
+            flow = dict(activity.get(CONF_FLOW) or {})
+            for d in activity.get(CONF_DEVICES) or []:
+                if moved.get(d):
+                    flow[d] = {**moved[d], **(flow.get(d) or {})}
+            if flow:
+                activity[CONF_FLOW] = flow
+        for d, device in devices.items():
+            if isinstance(device, dict):
+                for k in FLOW_KEYS:
+                    device.pop(k, None)
+    return out
+
 
 _STEP_BASE = {
     vol.Optional(CONF_ID): str,
@@ -508,6 +565,7 @@ _ACTIVITY_FIELDS = vol.Schema(
         # Device -> what to wait for before it is turned on
         vol.Optional(CONF_BEFORE, default=dict): {_KEY: BEFORE_SCHEMA},
         vol.Optional(CONF_STARTED_BY, default=list): [STARTED_BY_SCHEMA],
+        vol.Optional(CONF_FLOW, default=dict): {_KEY: DEVICE_FLOW_SCHEMA},
         vol.Optional(CONF_MONITOR, default=dict): MONITOR_SCHEMA,
         # Validated in depth by async_validate_config (needs hass)
         vol.Optional(CONF_ON_START, default=list): vol.Any(None, [dict]),
@@ -571,6 +629,9 @@ def _check_references(rooms: dict[str, Any]) -> None:
                         f"unknown device '{check[CONF_DEVICE]}'",
                         path=[*base, CONF_CHECKS, idx, CONF_DEVICE],
                     )
+            for device_id in activity[CONF_FLOW]:
+                if device_id not in devices:
+                    raise vol.Invalid(f"unknown device '{device_id}'", path=[*base, CONF_FLOW, device_id])
             for device_id, before in activity[CONF_BEFORE].items():
                 if device_id not in activity[CONF_DEVICES]:
                     raise vol.Invalid(

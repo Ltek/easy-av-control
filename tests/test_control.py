@@ -306,7 +306,7 @@ async def test_send_command_reconnects_first(
 
     # Still not connected after the timeout: the caller gets an error
     hass.states.async_set("remote.vu", "off")
-    coordinator.rooms["wz"]["devices"]["vu"]["ready"].update(timeout=1, reload_integration=False)
+    coordinator.rooms["wz"]["activities"]["tv"]["flow"]["vu"]["ready"].update(timeout=1, reload_integration=False)
     with pytest.raises(HomeAssistantError) as err:
         await send(hass, "channel_up")
     assert err.value.translation_key == "device_not_ready"

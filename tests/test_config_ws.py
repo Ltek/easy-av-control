@@ -8,9 +8,9 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from homeassistant.core import HomeAssistant
 
-from custom_components.easy_av_control.const import DOMAIN
-
 from .common import living_room
+from custom_components.easy_av_control.const import DOMAIN
+from custom_components.easy_av_control.model import move_device_actions
 
 
 async def setup_entry(hass: HomeAssistant, data: dict[str, Any]) -> MockConfigEntry:
@@ -29,7 +29,7 @@ async def test_get_validate_save(hass: HomeAssistant, devices, hass_ws_client) -
     await client.send_json_auto_id({"type": "easy_av_control/config/get"})
     got = (await client.receive_json())["result"]
     assert got["entry_id"] == entry.entry_id
-    assert got["rooms"] == living_room()["rooms"]
+    assert got["rooms"] == move_device_actions(living_room())["rooms"]
 
     rooms = copy.deepcopy(got["rooms"])
     rooms["wz"]["devices"]["beamer"]["delay_after_power"] = 20

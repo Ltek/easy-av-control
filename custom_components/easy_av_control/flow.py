@@ -70,7 +70,7 @@ from .device_state import (
     wait_mode,
 )
 from .device_timings import typical_of
-from .model import CONF_DELAY_AFTER
+from .model import CONF_DELAY_AFTER, activity_devices
 from .monitor import monitor_of
 from .profile_library import profiles_of
 
@@ -215,8 +215,9 @@ def plan_start(
     From idle, every device and outlet is taken as off. Switching assumes
     the previous activity runs completely: its devices and outlets are on.
     """
-    devices: dict[str, Any] = room[CONF_DEVICES]
     activity = room[CONF_ACTIVITIES][activity_id]
+    devices: dict[str, Any] = activity_devices(room, activity)
+    old_by_flow: dict[str, Any] = activity_devices(room, room[CONF_ACTIVITIES].get(previous) if previous else None)
     new_devices: list[str] = activity[CONF_DEVICES]
     old_devices: list[str] = (
         room[CONF_ACTIVITIES][previous][CONF_DEVICES]
@@ -236,7 +237,7 @@ def plan_start(
     cooldown: dict[str, float] = {}
     status_wait: dict[str, float] = {}
     for device_id in unused:
-        device = devices[device_id]
+        device = old_by_flow[device_id]
         rows.append(
             _switch_row(
                 hass, "turn_off", device_id, device[CONF_ENTITY_ID], clock.at, device, reason="unused"
@@ -489,8 +490,8 @@ def plan_stop(
     others: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Rows of stopping an activity that runs completely."""
-    devices: dict[str, Any] = room[CONF_DEVICES]
     activity = room[CONF_ACTIVITIES][activity_id]
+    devices: dict[str, Any] = activity_devices(room, activity)
     device_ids: list[str] = activity[CONF_DEVICES]
     shared = shared_outlets(room_id, room, others or {})
     clock = _Clock()

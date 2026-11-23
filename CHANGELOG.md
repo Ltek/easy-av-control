@@ -1,5 +1,18 @@
 # Changelog
 
+## v2026.11.23.30
+
+**Changed**
+- **A Flow holds devices and actions; a device is only what it is.** The connection check, boot time, the waits when
+  turning on and off (status, fixed time, both or none, with timeout and how long a state must hold), what to do
+  on failure, the cool-down and the later turn-off are now set per activity, with ✎ on the device in its Flow. The
+  device page keeps the entity, name, remote, outlet, status source and profile, card settings and the Watchdog.
+- Your setup is moved on update (configuration 2.3): every activity gets its devices' current values in its own
+  Flow, so nothing runs differently. Changing a wait in one activity no longer changes any other.
+- **Import** replaces only the activity's Flow: devices the room has (same entity) are left as they are, others are
+  added; no confirmation. An export from an earlier build has these settings on its devices: they go into the
+  imported activity's Flow.
+
 ## v2026.11.23.29
 
 **Added**

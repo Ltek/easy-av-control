@@ -31,18 +31,27 @@ test("an export holds the activity and only the devices it needs", () => {
   assert.deepEqual(Object.keys(env.devices).sort(), ["jvc", "lumagen", "shield"]);
 });
 
-test("an import replaces the activity of the same name and its devices completely", () => {
+test("an import replaces the activity's Flow, and leaves the devices as they are", () => {
   const env = exported();
-  env.activities.movie.devices = ["jvc", "shield"];
-  env.devices.lumagen = { entity_id: "switch.lumagen_radiancepro_power", wait_on: "none" };
+  env.activities.movie.devices = ["jvc", "lumagen", "shield"];
+  env.activities.movie.flow = { lumagen: { wait_on: "none" } };
+  env.devices.lumagen = { entity_id: "switch.lumagen_radiancepro_power", name: "Changed" };
   const result = importActivities(theater, env);
   assert.deepEqual(result.replaced, { movie: "Movie" });
   assert.deepEqual(result.added, {});
-  assert.deepEqual(result.room.activities!.movie.devices, ["jvc", "shield"]);
-  assert.deepEqual(result.room.devices!.lumagen, { entity_id: "switch.lumagen_radiancepro_power", wait_on: "none" });
-  assert.deepEqual(result.alsoAffected, ["Music"]);
+  assert.deepEqual(result.room.activities!.movie.flow, { lumagen: { wait_on: "none" } });
+  assert.deepEqual(result.room.devices!.lumagen, theater.devices!.lumagen);
   assert.ok(result.room.activities!.movie.started_by);
   assert.equal(Object.keys(result.room.activities!).length, 2);
+});
+
+test("an old export's device waits go into the activity's Flow", () => {
+  const env = exported();
+  env.devices.lumagen = { entity_id: "switch.lumagen_radiancepro_power", wait_on: "none", ready: { timeout: 9 } };
+  const other: Room = { devices: {} };
+  const result = importActivities(other, env);
+  assert.deepEqual(result.room.devices!.lumagen, { entity_id: "switch.lumagen_radiancepro_power" });
+  assert.deepEqual(result.room.activities!.movie.flow?.lumagen, { wait_on: "none", ready: { timeout: 9 } });
 });
 
 test("as a copy it is added with a numeral, without Started by", () => {
