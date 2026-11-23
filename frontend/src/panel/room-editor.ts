@@ -357,7 +357,9 @@ export class EasyAvControlRoomEditor extends LitElement {
 
   /** Startup (held 3 s, so a stray tap starts nothing) and Shutdown, beside the activity's name. */
   private _runButtons(id: string): TemplateResult {
-    const saved = Boolean(this.saved?.activities?.[id]);
+    const saved = Boolean(this.saved?.activities?.[id]) && this.saved?.activities?.[id]?.enabled !== false;
+    const activity = this.room.activities?.[id] ?? {};
+    const enabled = activity.enabled !== false;
     const startHold = (ev: PointerEvent) => {
       const button = ev.currentTarget as HTMLElement;
       button.setPointerCapture?.(ev.pointerId);
@@ -374,6 +376,15 @@ export class EasyAvControlRoomEditor extends LitElement {
       this._holdTimer = undefined;
     };
     return html`<span class="run-buttons">
+      <label class="enabled-toggle ${enabled ? "" : "off"}" title=${this._t("act_enabled_hint")}>
+        <input
+          type="checkbox"
+          .checked=${live(enabled)}
+          @change=${(ev: Event) =>
+            this._setActivity(id, { ...activity, enabled: (ev.target as HTMLInputElement).checked ? undefined : false })}
+        />
+        ${this._t(enabled ? "act_enabled" : "act_disabled")}
+      </label>
       <button
         class="run-btn startup"
         title=${`${this._t("act_hold")}. ${this._t("act_saved_only")}`}
@@ -1090,7 +1101,7 @@ export class EasyAvControlRoomEditor extends LitElement {
                 activity.name ?? id,
                 names(activity) || this._t("no_devices"),
                 () => this._show({ kind: "activity", id }),
-                undefined,
+                activity.enabled === false ? this._t("act_disabled") : undefined,
                 activity.icon ?? "mdi:play-circle-outline",
               ),
             )
@@ -2726,6 +2737,18 @@ export class EasyAvControlRoomEditor extends LitElement {
       font-family: var(--code-font-family, monospace);
       font-size: var(--ltek-fs-small);
       resize: vertical;
+    }
+    .enabled-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-right: 8px;
+      font-size: var(--ltek-fs-small);
+      color: var(--secondary-text-color);
+      cursor: pointer;
+    }
+    .enabled-toggle.off {
+      color: var(--warning-color, #ffa600);
     }
     .head-acts {
       display: flex;

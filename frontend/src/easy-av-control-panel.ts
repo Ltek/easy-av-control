@@ -360,7 +360,7 @@ export class EasyAvControlPanel extends LitElement {
           </button>
           ${sortedActivities(room).map(
             ([aid, activity]) => html`<div
-              class="nav-activity ${this._page === "room" && id === selected && this._openActivity === aid ? "active" : ""}"
+              class="nav-activity ${this._page === "room" && id === selected && this._openActivity === aid ? "active" : ""} ${activity.enabled === false ? "disabled" : ""}"
             >
               <button class="nav-act-name" @click=${() => this._goActivity(id, aid, false)}>
                 <ha-icon icon=${activity.icon ?? "mdi:play-circle-outline"}></ha-icon>
@@ -812,7 +812,11 @@ export class EasyAvControlPanel extends LitElement {
       background: var(--ltek-c-accent-fade);
     }
     /* A room's activities, under it in the menu; the icon on the right opens the Flow */
-    .nav-activity {
+    .nav-activity.disabled .nav-act-name {
+        opacity: 0.5;
+        text-decoration: line-through;
+      }
+      .nav-activity {
       display: flex;
       align-items: center;
       gap: var(--ltek-sp-1);

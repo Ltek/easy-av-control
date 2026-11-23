@@ -1,5 +1,14 @@
 # Changelog
 
+## v2026.11.23.27
+
+**Added**
+- **Enabled** switch beside an activity's name. A disabled activity (`enabled: false`) can't be started: the
+  start action refuses it, the card and the Scene select leave it out, its scene is unavailable, Started by ignores
+  it and it is never the default activity. It is crossed out in the menu and marked in the Activities list.
+- **Entities** on the Reports page: per room, the entities Easy AV Control makes and the ones it relies on, each
+  with what it is for and its state now.
+
 ## v2026.11.22.26
 
 **Added**

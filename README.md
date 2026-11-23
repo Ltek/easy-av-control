@@ -407,6 +407,7 @@ hook) follows the room's sensor instead of waiting minutes for the select. The `
 |-----|-------------|
 | `name` | Display name (defaults to the key) |
 | `icon` | Icon in the remote control card, e.g. `mdi:television` |
+| `enabled` | `false`: the activity can't be started. The card, its scene (unavailable) and the Scene select leave it out, Started by ignores it, and it is never the default activity. The switch beside the activity's name in the panel |
 | `order` | Position in lists; without it, activities are sorted by name. Home Assistant stores the configuration with sorted keys, so the order in which you write activities is not kept |
 | `devices` | Devices the activity uses, in power-on order |
 | `before` | Per device, what to wait for before it is turned on, see below |
@@ -551,6 +552,10 @@ whole flow varies or one device does. Device times are measured for devices with
 until the status says on (or off), only when Easy AV Control switched the device. The last 300 runs and 100
 times per device are kept in `.storage/easy_av_control.history`.
 
+
+**Entities** (Reports): per room, the entities Easy AV Control makes (switch, sensor, select, scenes, problem
+sensors) and the ones it relies on (devices, outlets, remotes, status, connection and picture checks, checks,
+Started by), each with what it is for and its state now.
 ### The card
 
 Add the card to any dashboard (**Edit dashboard → Add card → Easy AV Control Remote**) and pick the room. Since Home Assistant 2026.6 the card picker also suggests it by entity: under **By entity**, open the area and the room's device ("AV: <room>") or pick one of its entities, and the card is offered with that room already set. Or in YAML:

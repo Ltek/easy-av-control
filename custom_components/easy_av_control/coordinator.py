@@ -118,6 +118,7 @@ from .const import (
     CONF_DELAY_AFTER_POWER,
     CONF_DEVICE,
     CONF_DEVICES,
+    CONF_ENABLED,
     CONF_ENTITY_ID,
     CONF_NAME,
     CONF_OFF_OPTION,
@@ -153,6 +154,7 @@ from .const import (
     FAILURE_RETRY,
     FAILURE_STOP,
     ON_TIMEOUT_ABORT,
+    PROBLEMS,
     SIGNAL_ROOMS_UPDATED,
     STEP_TYPE_CALL_ACTION,
     STEP_TYPE_DELAY,
@@ -205,7 +207,16 @@ from .device_state import (
 )
 from .device_timings import MAX_SAMPLES, add_sample, is_slow, typical
 from .history import RunRecorder, history_of
-from .model import CONF_DELAY_AFTER, async_validate_config, find_missing_entities
+from .model import (
+    CONF_DELAY_AFTER,
+    async_validate_config,
+    find_missing_entities,
+    problem_unique_id,
+    scene_unique_id,
+    select_unique_id,
+    sensor_unique_id,
+    switch_unique_id,
+)
 from .monitor import Monitor
 
 _LOGGER = logging.getLogger(__name__)
@@ -750,6 +761,7 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             (room_id, activity_id, trigger)
             for room_id, room in self.rooms.items()
             for activity_id, activity in room[CONF_ACTIVITIES].items()
+            if activity.get(CONF_ENABLED, True)
             for trigger in activity.get(CONF_STARTED_BY) or []
         ]
 
@@ -831,6 +843,9 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if activity_id is None:
             _LOGGER.error("Activity '%s' not found in room '%s'", activity, room_id)
             return
+        if not self.activity_enabled(room_id, activity_id):
+            _LOGGER.warning("Room '%s': '%s' is disabled, not started", room_id, activity_id)
+            return
         await self._async_run_command(
             room_id, ("start", activity_id), lambda: self._async_start(room_id, activity_id)
         )
@@ -863,6 +878,10 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return
         await self.async_start_activity(room_id, target)
 
+    def activity_enabled(self, room_id: str, activity_id: str) -> bool:
+        activity = self.rooms.get(room_id, {}).get(CONF_ACTIVITIES, {}).get(activity_id)
+        return activity is not None and activity.get(CONF_ENABLED, True)
+
     def default_activity(self, room_id: str) -> str | None:
         """Activity a plain "on" starts.
 
@@ -870,7 +889,7 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         in order.
         """
         room = self.rooms.get(room_id, {})
-        activities = room.get(CONF_ACTIVITIES, {})
+        activities = {k: a for k, a in room.get(CONF_ACTIVITIES, {}).items() if a.get(CONF_ENABLED, True)}
         if room.get(CONF_DEFAULT_ACTIVITY) in activities:
             return room[CONF_DEFAULT_ACTIVITY]
         last = self.runtime(room_id).last_activity
@@ -1711,6 +1730,55 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if check.get(CONF_ENTITY_ID):
                     out.add(check[CONF_ENTITY_ID])
         return sorted(out)
+
+    def entity_map(self, room_id: str) -> dict[str, list[dict[str, Any]]]:
+        """For Reports: the entities Easy AV Control creates for the room, and those it relies on, each with its role.
+
+        ``created``: {entity_id, role} (role: switch, sensor, select, scene, problem); ``used``: {entity_id, roles:
+        [{role, device / activity}]} (role: device, outlet, remote, status, ready, picture, check, started_by).
+        """
+        room = self.rooms[room_id]
+        registry = er.async_get(self.hass)
+        wanted: dict[str, dict[str, Any]] = {
+            switch_unique_id(room_id): {"role": "switch"},
+            sensor_unique_id(room_id): {"role": "sensor"},
+            select_unique_id(room_id): {"role": "select"},
+            **{scene_unique_id(room_id, a): {"role": "scene", "activity": a} for a in room[CONF_ACTIVITIES]},
+            **{problem_unique_id(room_id, k): {"role": "problem", "problem": k} for k in PROBLEMS},
+        }
+        created = []
+        for entry in er.async_entries_for_config_entry(registry, self.entry.entry_id):
+            if (info := wanted.get(entry.unique_id)) is not None:
+                created.append({"entity_id": entry.entity_id, **info})
+        created.sort(key=lambda e: (["switch", "sensor", "select", "scene", "problem"].index(e["role"]), e["entity_id"]))
+
+        used: dict[str, list[dict[str, Any]]] = {}
+
+        def add(entity_id: str | None, role: str, **where: Any) -> None:
+            if entity_id:
+                roles = used.setdefault(entity_id, [])
+                if {"role": role, **where} not in roles:
+                    roles.append({"role": role, **where})
+
+        for device_id, device in room[CONF_DEVICES].items():
+            add(device[CONF_ENTITY_ID], "device", device=device_id)
+            add(device.get(CONF_POWER_SWITCH), "outlet", device=device_id)
+            add(device.get(CONF_REMOTE_ENTITY), "remote", device=device_id)
+            add((device.get(CONF_READY) or {}).get(CONF_ENTITY_ID), "ready", device=device_id)
+            with contextlib.suppress(Exception):
+                if (source := self.state_source(device)) is not None:
+                    add(source.entity_id, "status", device=device_id)
+                if (picture := picture_source(self.hass, self.profiles, device)) is not None:
+                    add(picture[0].entity_id, "picture", device=device_id)
+        for activity_id, activity in room[CONF_ACTIVITIES].items():
+            for check in activity.get(CONF_CHECKS) or []:
+                add(check.get(CONF_ENTITY_ID), "check", activity=activity_id, device=check[CONF_DEVICE])
+            for trigger in activity.get(CONF_STARTED_BY) or []:
+                add(trigger[CONF_ENTITY_ID], "started_by", activity=activity_id)
+        return {
+            "created": created,
+            "used": [{"entity_id": e, "roles": r} for e, r in sorted(used.items())],
+        }
 
     def _recorder(self, room_id: str, activity_id: str, mode: str, previous: str | None) -> RunRecorder:
         room = self.rooms[room_id]

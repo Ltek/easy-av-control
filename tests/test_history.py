@@ -99,3 +99,15 @@ async def test_an_unreachable_device_is_waited_for(hass: HomeAssistant, devices:
 
     hass.states.async_set(entity, "unavailable")
     assert not await coordinator._async_wait_reachable(entity, 3)
+
+
+async def test_entities_lists_what_is_created_and_used(hass: HomeAssistant, devices: Devices, hass_ws_client) -> None:
+    await setup(hass, devices, living_room())
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id({"type": "easy_av_control/history/entities"})
+    room = (await client.receive_json())["result"]["rooms"]["wz"]
+    roles = [e["role"] for e in room["created"]]
+    assert roles[:3] == ["switch", "sensor", "select"] and roles.count("scene") == 2 and roles.count("problem") == 5
+    used = {e["entity_id"]: [r["role"] for r in e["roles"]] for e in room["used"]}
+    assert used["media_player.onkyo_receiver"] == ["device"]
+    assert used["switch.wz_steckdose_multimedia_5_4_grau"] == ["outlet", "outlet"]  # onkyo and vu

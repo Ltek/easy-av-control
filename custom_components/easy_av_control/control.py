@@ -32,6 +32,7 @@ from .const import (
     CONF_COMMANDS,
     CONF_DEVICE,
     CONF_DEVICES,
+    CONF_ENABLED,
     CONF_ENTITY,
     CONF_ENTITY_ID,
     CONF_ICON,
@@ -528,4 +529,5 @@ def activity_list(room: dict[str, Any]) -> list[dict[str, Any]]:
     return [
         {"id": activity_id, "name": data.get(CONF_NAME, activity_id), "icon": data.get(CONF_ICON)}
         for activity_id, data in room[CONF_ACTIVITIES].items()
+        if data.get(CONF_ENABLED, True)
     ]

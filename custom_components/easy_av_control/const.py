@@ -157,6 +157,8 @@ PROBLEM_SCOPE: Final = {
 }
 # A check: also checked while the activity is active (Monitoring), not only during Startup
 CONF_KEEP_CHECKING: Final = "keep_checking"
+# An activity that is off: it can't be started, and no card, select or Started by offers it
+CONF_ENABLED: Final = "enabled"
 FAILURE_WARN: Final = "warn"
 FAILURE_STOP: Final = "stop"
 FAILURE_RETRY: Final = "retry"

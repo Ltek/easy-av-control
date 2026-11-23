@@ -48,6 +48,8 @@ export interface Activity extends Obj {
   name?: string;
   icon?: string;
   order?: number;
+  /** false: can't be started */
+  enabled?: boolean;
   devices?: string[];
   steps?: Step[];
   checks?: Obj[];

@@ -261,6 +261,9 @@
     },
     "device_not_ready": {
       "message": "Command \"{command}\" not sent: {reason}"
+    },
+    "disabled_activity": {
+      "message": "Activity {activity} in room {room} is disabled"
     }
   }
 }

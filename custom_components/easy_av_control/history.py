@@ -212,9 +212,29 @@ def _attributes(state: Any) -> dict[str, Any] | None:
 
 @callback
 def async_setup_ws(hass: HomeAssistant) -> None:
+    websocket_api.async_register_command(hass, ws_history_entities)
     websocket_api.async_register_command(hass, ws_history)
     websocket_api.async_register_command(hass, ws_history_clear)
     websocket_api.async_register_command(hass, ws_history_export)
+
+
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/history/entities"})
+@websocket_api.require_admin
+@callback
+def ws_history_entities(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+    """Per room: the entities Easy AV Control creates and the ones it relies on, with their roles."""
+    from .websocket import _coordinators
+
+    rooms = {}
+    for coordinator in _coordinators(hass):
+        for room_id, room in coordinator.rooms.items():
+            rooms[room_id] = {
+                "name": room.get("name") or room_id,
+                "devices": {d: coordinator.device_name(dev) for d, dev in room["devices"].items()},
+                "activities": {a: coordinator.activity_name(room_id, a) for a in room["activities"]},
+                **coordinator.entity_map(room_id),
+            }
+    connection.send_result(msg["id"], {"rooms": rooms})
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/history/get"})

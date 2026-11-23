@@ -18,12 +18,13 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
-    DOMAIN,
-    CONF_ACTIVITIES,
+    ACTIVITY_STATE_ERROR,
     ACTIVITY_STATE_IDLE,
     ACTIVITY_STATE_STARTING,
     ACTIVITY_STATE_STOPPING,
-    ACTIVITY_STATE_ERROR,
+    CONF_ACTIVITIES,
+    CONF_ENABLED,
+    DOMAIN,
 )
 from .coordinator import EasyAVControlCoordinator
 from .model import select_unique_id
@@ -85,7 +86,12 @@ class RoomActivitySelect(CoordinatorEntity, SelectEntity):
         exactly one activity.
         """
         activities = self.coordinator.rooms.get(self.room_id, {}).get(CONF_ACTIVITIES, {})
-        names = {a: self.coordinator.activity_name(self.room_id, a) for a in activities}
+        running = self.coordinator.active_activities.get(self.room_id)
+        names = {
+            a: self.coordinator.activity_name(self.room_id, a)
+            for a, data in activities.items()
+            if data.get(CONF_ENABLED, True) or a == running
+        }
         taken = Counter(names.values())
         fixed = {_OPT_IDLE, *_READONLY_OPTIONS}
         return {

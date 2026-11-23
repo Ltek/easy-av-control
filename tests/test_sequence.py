@@ -189,3 +189,21 @@ async def test_its_own_startup_does_not_start_it_twice(hass: HomeAssistant, devi
     await coordinator.async_stop_activity("wz")
     await _drain(hass)
     assert coordinator.activity_states["wz"] == "idle"
+
+
+async def test_a_disabled_activity_is_not_started(hass: HomeAssistant, devices: Devices) -> None:
+    import pytest
+    from homeassistant.exceptions import ServiceValidationError
+
+    hass.states.async_set(HARMONY, "power_off", {"options": ["power_off", "On"]})
+    data = _started_by()
+    data["rooms"]["wz"]["activities"]["tv"]["enabled"] = False
+    coordinator = await setup(hass, devices, data)
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call("easy_av_control", "start_activity", {"room": "wz", "activity": "tv"}, blocking=True)
+    hass.states.async_set(HARMONY, "On", {"options": ["power_off", "On"]})
+    await _drain(hass)
+    assert coordinator.activity_states["wz"] == "idle"
+    assert coordinator.default_activity("wz") == "musik"
+    assert "tv" not in [a["id"] for a in coordinator.room_view("wz")["activities"]]
+    assert hass.states.get("scene.av_wohnzimmer_tv").state == "unavailable"

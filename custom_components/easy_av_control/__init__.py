@@ -124,6 +124,12 @@ def _register_services(hass: HomeAssistant) -> None:
                 translation_key="unknown_activity",
                 translation_placeholders={"room": room_id, "activity": activity},
             )
+        if not coordinator.activity_enabled(room_id, coordinator.resolve_activity(room_id, activity) or ""):
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="disabled_activity",
+                translation_placeholders={"room": room_id, "activity": activity},
+            )
         await coordinator.async_start_activity(room_id, activity)
 
     async def handle_stop_activity(call: ServiceCall) -> None:

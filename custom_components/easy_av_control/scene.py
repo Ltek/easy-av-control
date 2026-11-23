@@ -10,7 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, CONF_ACTIVITIES
+from .const import CONF_ACTIVITIES, DOMAIN
 from .coordinator import EasyAVControlCoordinator
 from .model import scene_unique_id
 
@@ -75,6 +75,11 @@ class AVScene(Scene):
     async def async_activate(self, **kwargs: Any) -> None:
         """Activate the scene (start the activity)."""
         await self.coordinator.async_start_activity(self.room_id, self.activity_name)
+
+    @property
+    def available(self) -> bool:
+        """A disabled activity's scene is unavailable."""
+        return self.coordinator.activity_enabled(self.room_id, self.activity_name)
 
     @property
     def device_info(self) -> DeviceInfo:

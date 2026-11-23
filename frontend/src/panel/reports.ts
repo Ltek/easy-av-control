@@ -25,6 +25,17 @@ import { t } from "./strings";
 const last = <T>(list: T[]): T => list[list.length - 1];
 
 type History = { runs: Run[]; devices: Record<string, DeviceEvent[]> };
+type EntityRole = { role: string; device?: string; activity?: string; problem?: string };
+type EntityRooms = Record<
+  string,
+  {
+    name: string;
+    devices: Record<string, string>;
+    activities: Record<string, string>;
+    created: ({ entity_id: string } & EntityRole)[];
+    used: { entity_id: string; roles: EntityRole[] }[];
+  }
+>;
 
 const RESULT_BADGE: Record<string, string> = { ok: "ok", warning: "warn", error: "err", cancelled: "" };
 
@@ -37,13 +48,15 @@ export class EasyAvControlReports extends LitElement {
     _expanded: { state: true },
     _mode: { state: true },
     _copied: { state: true },
+    _entities: { state: true },
   };
 
   declare hass: HomeAssistant;
   declare _history?: History;
   declare _failed?: string;
   /** The open panel: runs or devices */
-  declare _open: "runs" | "devices" | "";
+  declare _open: "runs" | "devices" | "entities" | "";
+  declare _entities?: EntityRooms;
   /** Expanded rows (group keys, run timestamps, device entities) */
   declare _expanded: Set<string>;
   declare _mode: "all" | "start" | "stop";
@@ -149,17 +162,19 @@ export class EasyAvControlReports extends LitElement {
       ${!history
         ? html`<p class="ltek-hint">${this._t("loading")}</p>`
         : html`${this._panel("runs", "mdi:timer-play-outline", this._t("rep.runs"), this._renderRuns(history.runs))}
-          ${this._panel("devices", "mdi:television-play", this._t("rep.devices"), this._renderDevices(history.devices))}`}
+          ${this._panel("devices", "mdi:television-play", this._t("rep.devices"), this._renderDevices(history.devices))}
+          ${this._panel("entities", "mdi:format-list-bulleted-type", this._t("rep.entities"), this._renderEntities())}`}
     `;
   }
 
-  private _panel(key: "runs" | "devices", icon: string, title: string, body: TemplateResult): TemplateResult {
+  private _panel(key: "runs" | "devices" | "entities", icon: string, title: string, body: TemplateResult): TemplateResult {
     return html`<details
       class="ltek-sec"
       .open=${this._open === key}
       @toggle=${(ev: Event) => {
         const open = (ev.target as HTMLDetailsElement).open;
         if (open && this._open !== key) this._open = key;
+        if (open && key === "entities") this._loadEntities();
         else if (!open && this._open === key) this._open = "";
       }}
     >
@@ -283,6 +298,46 @@ export class EasyAvControlReports extends LitElement {
 
   // ------------------------------------------------------------------ Devices
 
+  private async _loadEntities(): Promise<void> {
+    try {
+      this._entities = (await this.hass.callWS<{ rooms: EntityRooms }>({ type: "easy_av_control/history/entities" })).rooms;
+    } catch (err) {
+      this._failed = (err as { message?: string }).message ?? String(err);
+    }
+  }
+
+  /** What Easy AV Control creates per room, and what it relies on, each with its purpose. */
+  private _renderEntities(): TemplateResult {
+    const rooms = this._entities;
+    if (!rooms) return html`<p class="ltek-hint">${this._t("loading")}</p>`;
+    const name = (id: string) => (this.hass.states[id]?.attributes.friendly_name as string | undefined) ?? id;
+    const state = (id: string) => this.hass.states[id]?.state ?? this._t("rep.ent_missing");
+    const row = (id: string, purposes: string[]) => html`<div class="ent">
+      <span class="ent-name"><b>${name(id)}</b><span class="mono">${id}</span></span>
+      <span class="ent-purpose">${purposes.map((p) => html`<span>${p}</span>`)}</span>
+      <span class="ltek-badge ${this.hass.states[id] && state(id) !== "unavailable" ? "" : "warn"}">${state(id)}</span>
+    </div>`;
+    return html`<p class="ltek-hint">${this._t("rep.entities_hint")}</p>
+      ${Object.entries(rooms).map(([, room]) => {
+        const where = (r: EntityRole) =>
+          [r.device ? room.devices[r.device] ?? r.device : "", r.activity ? room.activities[r.activity] ?? r.activity : ""]
+            .filter(Boolean)
+            .join(" · ");
+        return html`<h3>${room.name}</h3>
+          <h4>${this._t("rep.ent_created")}</h4>
+          ${room.created.map((e) =>
+            row(e.entity_id, [
+              this._t(`rep.ent.${e.role}`, {
+                activity: e.activity ? room.activities[e.activity] ?? e.activity : "",
+                problem: e.problem ? this._t(`problem.${e.problem}`) : "",
+              }),
+            ]),
+          )}
+          <h4>${this._t("rep.ent_used")}</h4>
+          ${room.used.map((e) => row(e.entity_id, e.roles.map((r) => `${this._t(`rep.use.${r.role}`)}${where(r) ? `: ${where(r)}` : ""}`)))}`;
+      })}`;
+  }
+
   private _renderDevices(devices: Record<string, DeviceEvent[]>): TemplateResult {
     const entries = Object.entries(devices).filter(([, list]) => list.length);
     if (!entries.length) return html`<p class="ltek-hint">${this._t("rep.no_devices")}</p>`;
@@ -383,6 +438,41 @@ export class EasyAvControlReports extends LitElement {
       }
       h2 ha-icon {
         color: var(--ltek-c-accent);
+      }
+      .ent {
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.6fr) auto;
+        gap: var(--ltek-sp-3);
+        align-items: start;
+        padding: 6px 0;
+        border-top: 1px solid var(--divider-color);
+      }
+      .ent-name {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+      }
+      .ent-name .mono {
+        font-family: var(--code-font-family, monospace);
+        font-size: var(--ltek-fs-small);
+        color: var(--secondary-text-color);
+        overflow-wrap: anywhere;
+      }
+      .ent-purpose {
+        display: flex;
+        flex-direction: column;
+        color: var(--secondary-text-color);
+      }
+      h3 {
+        margin: var(--ltek-sp-3) 0 0;
+        font-size: var(--ltek-fs-group);
+      }
+      h4 {
+        margin: var(--ltek-sp-2) 0 0;
+        font-size: var(--ltek-fs-small);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--secondary-text-color);
       }
       .ltek-btn {
         display: inline-flex;

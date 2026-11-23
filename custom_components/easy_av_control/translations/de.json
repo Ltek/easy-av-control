@@ -261,6 +261,9 @@
     },
     "device_not_ready": {
       "message": "Befehl „{command}“ nicht gesendet: {reason}"
+    },
+    "disabled_activity": {
+      "message": "Aktivität {activity} im Raum {room} ist deaktiviert"
     }
   }
 }
