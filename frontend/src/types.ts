@@ -25,6 +25,8 @@ export interface HomeAssistant {
   states: Record<string, HassEntity | undefined>;
   entities?: Record<string, EntityRegistryDisplayEntry | undefined>;
   devices?: Record<string, DeviceRegistryEntry | undefined>;
+  areas?: Record<string, { area_id: string; name: string; icon?: string | null; floor_id?: string | null } | undefined>;
+  floors?: Record<string, { floor_id: string; name: string } | undefined>;
   language: string;
   connection: {
     subscribeMessage<T>(

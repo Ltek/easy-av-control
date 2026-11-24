@@ -37,6 +37,9 @@ export class LtekForm extends LitElement {
   declare computeLabel?: (field: Field) => string;
   declare computeHelper?: (field: Field) => string | undefined;
   declare disabled: boolean;
+  /** What is typed in a text or number field and not committed yet (change). Kept over re-renders: Home
+   *  Assistant re-renders on every state change, and the field must not jump back while you type. */
+  private _typing = new Map<string, string>();
 
   constructor() {
     super();
@@ -81,9 +84,13 @@ export class LtekForm extends LitElement {
           <label class="lbl">${label}</label>
           <input
             type="text"
-            .value=${live(value == null ? "" : String(value))}
+            .value=${live(this._typing.get(field.name) ?? (value == null ? "" : String(value)))}
             ?disabled=${this.disabled}
-            @change=${(ev: Event) => this._set(field.name, (ev.target as HTMLInputElement).value)}
+            @input=${(ev: Event) => this._typing.set(field.name, (ev.target as HTMLInputElement).value)}
+            @change=${(ev: Event) => {
+              this._typing.delete(field.name);
+              this._set(field.name, (ev.target as HTMLInputElement).value);
+            }}
           />
         </div>
         ${help}`;
@@ -91,6 +98,7 @@ export class LtekForm extends LitElement {
     if (kind === "number") {
       const unit = (opts.unit_of_measurement as string | undefined) ?? "";
       const set = (ev: Event) => {
+        this._typing.delete(field.name);
         const raw = (ev.target as HTMLInputElement).value;
         this._set(field.name, raw === "" ? undefined : Number(raw));
       };
@@ -119,8 +127,9 @@ export class LtekForm extends LitElement {
             min=${String(opts.min ?? "")}
             max=${String(opts.max ?? "")}
             step=${String(opts.step ?? 1)}
-            .value=${live(num)}
+            .value=${live(this._typing.get(field.name) ?? num)}
             ?disabled=${this.disabled}
+            @input=${(ev: Event) => this._typing.set(field.name, (ev.target as HTMLInputElement).value)}
             @change=${set}
           />
           ${unit ? html`<span class="unit">${unit}</span>` : nothing}

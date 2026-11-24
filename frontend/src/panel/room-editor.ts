@@ -126,6 +126,7 @@ export class EasyAvControlRoomEditor extends LitElement {
     _powerOn: { state: true },
     _flowEditing: { state: true },
     _draftStartedBy: { state: true },
+    _general: { state: true },
     _io: { state: true },
   };
 
@@ -158,6 +159,9 @@ export class EasyAvControlRoomEditor extends LitElement {
   /** The Export / Import dialog of activities */
   declare _io?: { mode: "export" | "import"; text: string; message?: string };
   declare _draftStartedBy?: { entity_id: string; state: string; stop_state?: string };
+  /** The General settings unlocked for editing: whose (the page key), and the values typed so far. Nothing
+   *  reaches the room until Save. */
+  declare _general?: { key: string; draft: Obj };
   /** The outlet a device had when it was unticked, to bring back when it is ticked again */
   private _powerMemo = new Map<string, Obj>();
   private _holdTimer?: number;
@@ -204,6 +208,9 @@ export class EasyAvControlRoomEditor extends LitElement {
     if (changed.has("roomId") && changed.get("roomId") !== undefined) {
       this._view = { kind: "list" };
       this._notice = undefined;
+    }
+    if (changed.has("_view") || changed.has("roomId")) {
+      this._general = undefined;
     }
     if (changed.has("_view")) {
       this._flowEditing = undefined;
@@ -265,33 +272,40 @@ export class EasyAvControlRoomEditor extends LitElement {
       { value: "__last", label: this._t("default_last") },
       ...Object.entries(this.room.activities ?? {}).map(([id, a]) => ({ value: id, label: a.name ?? id })),
     ];
+    const area = this.room.area_id ? this.hass?.areas?.[this.room.area_id] : undefined;
+    const floor = area?.floor_id ? this.hass?.floors?.[area.floor_id] : undefined;
+    const defaultActivity = this.room.default_activity
+      ? (this.room.activities?.[this.room.default_activity]?.name ?? this.room.default_activity)
+      : this._t("default_last");
     return html`
-      <ltek-form
-        .hass=${this.hass}
-        .data=${{
+      ${this._generalHeader({
+        title: this.room.name ?? this.roomId,
+        icon: area?.icon || "mdi:sofa-outline",
+        meta: [
+          html`<span><ha-icon icon="mdi:map-marker-outline"></ha-icon>${area ? `${area.name}${floor ? ` · ${floor.name}` : ""}` : this._t("gen_no_area")}</span>`,
+          html`<span><ha-icon icon="mdi:play-circle-outline"></ha-icon>${this._t("room_default_activity")}: ${defaultActivity}</span>`,
+        ],
+        data: {
           name: this.room.name ?? "",
           area_id: this.room.area_id ?? undefined,
           default_activity: this.room.default_activity ?? "__last",
-        }}
-        .schema=${[
+        },
+        schema: [
           { name: "name", required: true, selector: { text: {} } },
           { name: "area_id", selector: { area: {} } },
           { name: "default_activity", selector: { select: { options: activityOptions, mode: "dropdown" } } },
-        ]}
-        .computeLabel=${(s: { name: string }) => this._t(`room_${s.name === "area_id" ? "area" : s.name}`)}
-        .computeHelper=${this._helper}
-        @value-changed=${(ev: CustomEvent) => {
-          const v = ev.detail.value as Obj;
+        ],
+        label: (s: { name: string }) => this._t(`room_${s.name === "area_id" ? "area" : s.name}`),
+        save: (v: Obj) =>
           this._emit(
             clean({
               ...this.room,
-              name: v.name as string,
+              name: ((v.name as string | undefined)?.trim() || this.room.name) as string,
               area_id: v.area_id as string,
               default_activity: v.default_activity === "__last" ? undefined : (v.default_activity as string),
             }),
-          );
-        }}
-      ></ltek-form>
+          ),
+      })}
 
       <div class="tabs" role="tablist">
         ${(["devices", "activities", "watchdog", "yaml"] as Tab[]).map(
@@ -320,20 +334,82 @@ export class EasyAvControlRoomEditor extends LitElement {
     `;
   }
 
+  /** A page's General settings as a header: name, icon and the rest read-only, a lock to edit them. Edits stay
+   *  in a draft until Save, which applies them and saves the configuration; Cancel drops them. */
+  private _generalHeader(o: {
+    title: string;
+    icon: string;
+    meta: TemplateResult[];
+    data: Obj;
+    schema: Obj[];
+    label: (s: { name: string }) => string;
+    save: (v: Obj) => void;
+    beside?: TemplateResult;
+  }): TemplateResult {
+    const key = this._pageKey();
+    const editing = this._general?.key === key ? this._general : undefined;
+    return html`<div class="gen-head ${editing ? "editing" : ""}">
+        <div class="gen-icon"><ha-icon icon=${o.icon}></ha-icon></div>
+        <div class="gen-text">
+          <h2>${o.title}</h2>
+          <div class="gen-meta">${o.meta}</div>
+        </div>
+        <button
+          class="gen-lock ${editing ? "open" : ""}"
+          title=${this._t(editing ? "gen_lock" : "gen_unlock")}
+          aria-label=${this._t(editing ? "gen_lock" : "gen_unlock")}
+          aria-pressed=${editing ? "true" : "false"}
+          @click=${() => (this._general = editing ? undefined : { key, draft: { ...o.data } })}
+        >
+          <ha-icon icon=${editing ? "mdi:lock-open-variant-outline" : "mdi:lock-outline"}></ha-icon>
+        </button>
+        ${o.beside ?? nothing}
+      </div>
+      ${editing
+        ? html`<div class="gen-edit">
+            <ltek-form
+              .hass=${this.hass}
+              .data=${editing.draft}
+              .schema=${o.schema}
+              .computeLabel=${o.label}
+              .computeHelper=${this._helper}
+              @value-changed=${(ev: CustomEvent) => (this._general = { key, draft: ev.detail.value as Obj })}
+            ></ltek-form>
+            <div class="gen-bar">
+              <button
+                class="ltek-btn primary"
+                ?disabled=${JSON.stringify(editing.draft) === JSON.stringify(o.data)}
+                @click=${() => {
+                  this._general = undefined;
+                  o.save(editing.draft);
+                  this.dispatchEvent(new CustomEvent("save-request", { bubbles: true, composed: true }));
+                }}
+              >
+                <ha-icon icon="mdi:content-save-outline"></ha-icon> ${this._t("save")}
+              </button>
+              <button class="ltek-btn" @click=${() => (this._general = undefined)}>${this._t("cancel")}</button>
+            </div>
+          </div>`
+        : nothing}`;
+  }
+
   /** Header of a detail view: back, title, delete. */
   private _detailHeader(
-    back: string,
+    back: string | undefined,
     title: string,
     onDelete: () => void,
     beside?: TemplateResult,
     onDuplicate?: () => void,
     onExport?: () => void,
+    titleBlock?: TemplateResult,
   ): TemplateResult {
     return html`<div class="detail-head">
-        <button class="back" @click=${() => this._show({ kind: "list" })}>
-          <ha-icon icon="mdi:arrow-left"></ha-icon>
-          <span>${back}</span>
-        </button>
+        ${back
+          ? html`<button class="back" @click=${() => this._show({ kind: "list" })}>
+              <ha-icon icon="mdi:arrow-left"></ha-icon>
+              <span>${back}</span>
+            </button>`
+          : nothing}
         <span class="head-acts">
           ${onExport
             ? html`<button class="ltek-btn" @click=${onExport}>
@@ -350,7 +426,7 @@ export class EasyAvControlRoomEditor extends LitElement {
           </button>
         </span>
       </div>
-      <div class="title-row"><h2>${title}</h2>${beside ?? nothing}</div>
+      ${titleBlock ?? html`<div class="title-row"><h2>${title}</h2>${beside ?? nothing}</div>`}
       ${this._notice ? html`<div class="notice">${this._notice}</div>` : nothing}`;
   }
 
@@ -1209,35 +1285,36 @@ export class EasyAvControlRoomEditor extends LitElement {
 
     return html`
       ${this._detailHeader(
-        this._t("tab_activities"),
+        undefined,
         activity.name ?? id,
         () => this._deleteActivity(id, activity),
-        this._runButtons(id),
+        undefined,
         () => this._duplicateActivity(id, activity),
         () => this._openIo("export", [id]),
+        this._generalHeader({
+          title: activity.name ?? id,
+          icon: activity.icon || "mdi:play-circle-outline",
+          meta: [
+            html`<span><ha-icon icon="mdi:sofa-outline"></ha-icon>${this.room.name ?? this.roomId}</span>`,
+            html`<span><ha-icon icon="mdi:sort-numeric-ascending"></ha-icon>${this._t("field.order")}: ${activity.order ?? "–"}</span>`,
+            ...(this.room.default_activity === id
+              ? [html`<span><ha-icon icon="mdi:star-outline"></ha-icon>${this._t("gen_default")}</span>`]
+              : []),
+          ],
+          data: { name: activity.name, icon: activity.icon, order: activity.order },
+          schema: [
+            { name: "name", required: true, selector: { text: {} } },
+            { name: "icon", selector: { icon: {} } },
+            { name: "order", selector: { number: { min: 0, max: 999, mode: "box" } } },
+          ],
+          label: this._label,
+          save: (v: Obj) => this._activityGeneralChanged(id, activity, { ...v, name: (v.name as string | undefined)?.trim() || activity.name }),
+          beside: this._runButtons(id),
+        }),
       )}
       ${this._renderIo()}
 
       ${this._card(this._t("section_flow"), `${this._t("hint_flow")} ${this._t("flow.edit_hint")}`, this._renderFlowEditor(id, activity))}
-
-      ${this._card(
-        this._t("section_general"),
-        this._t("hint_general"),
-        html`<ltek-form
-          .hass=${this.hass}
-          .data=${{ name: activity.name, icon: activity.icon, order: activity.order }}
-          .schema=${[
-            { name: "name", required: true, selector: { text: {} } },
-            { name: "icon", selector: { icon: {} } },
-            { name: "order", selector: { number: { min: 0, max: 999, mode: "box" } } },
-          ]}
-          .computeLabel=${this._label}
-          @value-changed=${(ev: CustomEvent) => {
-            const v = ev.detail.value as Obj;
-            this._activityGeneralChanged(id, activity, v);
-          }}
-        ></ltek-form>`,
-      )}
 
       ${this._advanced(
         this._t("hint_activity_advanced"),
@@ -2563,6 +2640,9 @@ export class EasyAvControlRoomEditor extends LitElement {
     .title {
       font-weight: 500;
     }
+    .detail-head .head-acts {
+      margin-left: auto;
+    }
     .detail-head {
       display: flex;
       align-items: center;
@@ -2824,6 +2904,98 @@ export class EasyAvControlRoomEditor extends LitElement {
     .head-acts {
       display: flex;
       gap: 8px;
+    }
+    .gen-head {
+      display: flex;
+      align-items: center;
+      gap: var(--ltek-sp-3);
+      flex-wrap: wrap;
+      margin: 8px 0 16px;
+      padding: 14px 16px;
+      border: 1px solid var(--divider-color);
+      border-radius: 12px;
+      background: var(--ltek-c-surface, var(--card-background-color));
+    }
+    .gen-head.editing {
+      border-color: var(--ltek-c-accent);
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
+      margin-bottom: 0;
+    }
+    .gen-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      background: color-mix(in srgb, var(--ltek-c-accent) 14%, transparent);
+      color: var(--ltek-c-accent);
+      --mdc-icon-size: 28px;
+      flex: none;
+    }
+    .gen-text {
+      flex: 1;
+      min-width: 0;
+    }
+    .gen-head h2 {
+      margin: 0;
+      font-size: 1.5em;
+      font-weight: var(--ltek-fw-semibold, 600);
+      line-height: 1.2;
+    }
+    .gen-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 16px;
+      margin-top: 4px;
+      font-size: var(--ltek-fs-small);
+      color: var(--secondary-text-color);
+      --mdc-icon-size: 15px;
+    }
+    .gen-meta span {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    button.gen-lock {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      height: 30px;
+      padding: 0;
+      border: 1px solid var(--divider-color);
+      border-radius: 50%;
+      background: none;
+      color: var(--secondary-text-color);
+      cursor: pointer;
+      --mdc-icon-size: 16px;
+      flex: none;
+      align-self: flex-start;
+    }
+    button.gen-lock:hover,
+    button.gen-lock.open {
+      color: var(--ltek-c-accent);
+      border-color: var(--ltek-c-accent);
+    }
+    .gen-edit {
+      margin: 0 0 16px;
+      padding: 12px 16px;
+      border: 1px solid var(--ltek-c-accent);
+      border-top: none;
+      border-radius: 0 0 12px 12px;
+    }
+    .gen-bar {
+      display: flex;
+      gap: var(--ltek-sp-2);
+      padding-top: 10px;
+    }
+    .gen-bar .ltek-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--ltek-sp-1);
+      --mdc-icon-size: 16px;
     }
     .title-row {
       display: flex;

@@ -474,6 +474,7 @@ export class EasyAvControlPanel extends LitElement {
                 .profiles=${this._profiles}
                 @room-changed=${(ev: CustomEvent<{ room: Room }>) => this._roomChanged(selected, ev.detail.room)}
                 @delete-room=${() => this._deleteRoom(selected)}
+                @save-request=${() => void this._save()}
                 .jump=${this._jump}
                 @view-changed=${(ev: CustomEvent<{ view: { kind: string; id?: string } }>) => {
                   const view = ev.detail.view;

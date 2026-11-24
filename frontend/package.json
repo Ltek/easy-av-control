@@ -1,6 +1,6 @@
 {
   "name": "easy-av-control-card",
-  "version": "2026.11.23.31",
+  "version": "2026.11.24.32",
   "private": true,
   "description": "Remote control card and configuration panel for the Easy AV Control (Ltek) integration",
   "license": "MIT",

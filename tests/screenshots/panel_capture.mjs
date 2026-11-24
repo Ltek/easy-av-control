@@ -181,6 +181,12 @@ await settle(800);
 await page.getByRole('button', { name: /^TV/ }).first().click();
 await settle(3000);
 await shotBoth('activity');
+// The header's lock opens the General settings; Cancel drops the edit
+await page.locator('easy-av-control-room-editor button.gen-lock').click();
+await settle(800);
+await shotBoth('activity-general-edit');
+await page.locator('easy-av-control-room-editor .gen-bar button', { hasText: 'Cancel' }).click();
+await settle(400);
 await page.locator('easy-av-control-room-editor .head-acts button', { hasText: 'Export' }).click();
 await settle(800);
 await shotBoth('activity-export');

@@ -1,5 +1,20 @@
 # Changelog
 
+## v2026.11.24.32
+
+**Fixed**
+- **Typing in a name field no longer jumps back.** Text and number fields were reset to the stored value whenever
+  Home Assistant updated the page, which in a busy house happens several times a second, so a room or activity name
+  could not be changed.
+
+**Changed**
+- **Header for a room and an activity.** The page starts with the name as a header, with the general settings under
+  it: a room's area (and floor) and default activity, an activity's room, position and whether it is the default.
+  The lock in the header opens them for editing; **Save** there applies and saves them, **Cancel** (or the lock)
+  drops them. The General section of an activity is gone.
+- An activity page has no **← Activities** button any more: the menu lists the activities under their room. A device
+  page keeps **← Devices**.
+
 ## v2026.11.23.31
 
 **Changed**
