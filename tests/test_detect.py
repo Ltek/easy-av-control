@@ -381,6 +381,50 @@ async def test_checks_run_together_and_an_own_entity_can_be_checked(hass: HomeAs
     assert loop.time() - started < 1  # together, not one after the other
 
 
+async def test_checks_are_timed_from_switching_the_device_on(hass: HomeAssistant, home):
+    """Reports: how long the picture (profile check) and the signal (an entity of its own) took to show."""
+    from custom_components.easy_av_control.history import history_of
+
+    library = await async_get_library(hass)
+    lumagen = dict(library.builtin["lumagen"].raw)
+    lumagen.update(id="lumagen_fast", picture={**lumagen["picture"], "debounce": 0.05, "timeout": 1})
+    await library.async_save(lumagen)
+    hass.states.async_set(home["lum_video"], "No Source")
+    hass.states.async_set("sensor.stream_type", "none")
+    devices = Devices(hass)
+    checks = [
+        {"device": "lum"},
+        {"device": "lum", "entity_id": "sensor.stream_type", "state": ["dolby"], "debounce": 0.05, "timeout": 1},
+    ]
+    data = {"rooms": {"kino": {"name": "Kino",
+                               "devices": {"lum": {"entity_id": home["lum"], "name": "Lumagen", "state_source": "none"}},
+                               "activities": {"movie": {"name": "Movie", "devices": ["lum"], "checks": checks}}}}}
+    coordinator = await setup(hass, devices, data)
+
+    async def ready():
+        await asyncio.sleep(0.2)
+        hass.states.async_set(home["lum_video"], "Active Video")
+        await asyncio.sleep(0.2)
+        hass.states.async_set("sensor.stream_type", "dolby")
+
+    task = asyncio.ensure_future(ready())
+    await coordinator.async_start_activity("kino", "movie")
+    await task
+    events = {e["direction"]: e for e in history_of(hass).devices[home["lum"]] if e["direction"] in ("picture", "signal")}
+    assert events["picture"]["result"] == "ok" and 0.15 < events["picture"]["seconds"] < 0.9
+    assert events["signal"]["result"] == "ok" and 0.35 < events["signal"]["seconds"] < 1
+    assert events["signal"]["source"] == "sensor.stream_type" and events["picture"]["source"] == home["lum_video"]
+    assert "warm" not in events["picture"]  # switched on by this start
+
+    # A signal that never comes is recorded too, with what it showed
+    hass.states.async_set("sensor.stream_type", "none")
+    hass.states.async_set(home["lum_video"], "No Source")
+    await coordinator.async_stop_activity("kino")
+    await coordinator.async_start_activity("kino", "movie")
+    failed = [e for e in history_of(hass).devices[home["lum"]] if e["direction"] == "signal"][-1]
+    assert failed["result"] != "ok" and failed["value"] == "none"
+
+
 async def test_old_picture_steps_become_checks(hass: HomeAssistant):
     """Configs from before 2026.11.21.12: a wait_picture step is moved to the checks, the rest stays."""
     from custom_components.easy_av_control.migration import migrate_checks

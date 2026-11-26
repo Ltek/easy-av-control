@@ -663,6 +663,20 @@ checks:
   - {device: receiver, entity_id: sensor.receiver_input, state: [HDMI 1], timeout: 20}
 ```
 
+Every check is timed. **Reports → Devices** shows, per device, how long it took to show its picture (the
+device's picture check, *Picture shown*) and to lock a signal (a check on an entity of your own, *Signal locked*),
+counted from switching the device on in that start, with the typical time and each run's deviation. A device that
+was on already is counted from the start of the check and left out of the typical time. For the audio signal, check
+the processor's own sensor, e.g. the StormAudio *Stream Type* (or *Sample Rate*), with the states it shows while
+audio plays (see them in Developer tools → States); the time the check takes is how long the processor needs to lock
+the audio. The run's trace (Export) holds each check with its time.
+
+```yaml
+checks:
+  - {device: jvc}                                                    # picture: the JVC's Source Display
+  - {device: storm, entity_id: sensor.isp_stream_type, state: [Dolby Atmos, PCM], timeout: 30}   # audio
+```
+
 Wait-for-a-picture steps from earlier builds become checks by themselves.
 
 **The room's select** starts and stops in the background, so whoever sets it (an automation, Plex Center's room
@@ -817,7 +831,7 @@ A new command cancels whatever runs in the room: a stop during a long start take
 **Reports** in the panel's menu shows how long every start and stop took (grouped by room and activity, each run
 with its phases on a time line) and how long each device took to come on and go off, so you can see whether the
 whole flow varies or one device does. Device times are measured for devices with a status, from the command
-until the status says on (or off), only when Easy AV Control switched the device. The last 300 runs and 100
+until the status says on (or off), only when Easy AV Control switched the device. The checks of an activity are timed as well (picture shown, signal locked). The last 300 runs and 100
 times per device are kept in `.storage/easy_av_control.history`.
 
 

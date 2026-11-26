@@ -29,7 +29,8 @@ export interface Run {
 
 export interface DeviceEvent {
   at: string;
-  direction: "on" | "off";
+  /** on / off: the device's own time; picture / signal: how long a check took to pass */
+  direction: "on" | "off" | "picture" | "signal";
   seconds: number;
   result: string;
   name?: string;
@@ -37,6 +38,10 @@ export interface DeviceEvent {
   activity_name?: string;
   value?: string;
   slow?: boolean;
+  /** The entity a picture or signal check watched */
+  source?: string;
+  /** The device was on already: counted from the start of the check, not from switching it on */
+  warm?: boolean;
 }
 
 export interface Stats {

@@ -5,7 +5,8 @@ Kept in ``.storage/easy_av_control.history``, shared by all config entries:
 - **runs**, newest last, at most ``MAX_RUNS``: room, activity, start or stop, switching from which activity,
   when, how long in total, the result (ok, warning, error, cancelled) and its phases: each device brought up
   or switched off, the checks, the actions after start, the actions on start or stop.
-- **devices**: per device entity, at most ``MAX_DEVICE_SAMPLES`` events: when, on or off, how long, the
+- **devices**: per device entity, at most ``MAX_DEVICE_SAMPLES`` events: when, on, off, picture or signal (how
+  long a check took to pass, counted from switching the device on), how long, the
   result (ok, or what went wrong: timeout, unavailable, …) and which room and activity it was for.
 
 - **traces**, for the last ``MAX_TRACES`` runs: everything that happened, in order, with times: what the run

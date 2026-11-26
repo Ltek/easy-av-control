@@ -84,6 +84,13 @@ def demo_history():
                                     "room_name": "Living room", "activity_name": label,
                                     **({"slow": True} if took > usual[entity] * 1.8 and ok else {}),
                                     **({} if ok else {"value": "warming"})})
+            if entity == "media_player.projector" and ok:
+                # The projector's picture shows a while after it is on; the receiver's audio signal locks soon after
+                for kind, source, extra in (("picture", "sensor.projector_source_display", 11), ("signal", "sensor.av_receiver_stream_type", 4)):
+                    shown = round(took + extra * rnd.uniform(0.8, 1.3), 1)
+                    devices[entity].append({"at": (at + timedelta(seconds=t + shown)).isoformat(), "direction": kind,
+                                            "seconds": shown, "result": "ok", "name": names[entity],
+                                            "source": source, "room_name": "Living room", "activity_name": label})
             t += took
             if not ok:
                 break

@@ -1,5 +1,15 @@
 # Changelog
 
+## v2026.11.26.33
+
+**Added**
+- **Checks are timed.** Reports → Devices shows, per device, how long it took to show its picture (*Picture shown*:
+  the device's picture check, e.g. the JVC's Source Display or the Lumagen's input video) and to lock a signal
+  (*Signal locked*: a check on an entity of your own, e.g. the StormAudio Stream Type for the audio), counted from
+  switching the device on in that start, with the typical time and the deviation of each run, also when the check
+  times out (with what it showed). A device that was on already is counted from the start of the check and left
+  out of the typical time. The run's trace holds each check with its time.
+
 ## v2026.11.24.32
 
 **Fixed**

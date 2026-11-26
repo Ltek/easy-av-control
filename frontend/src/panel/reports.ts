@@ -357,8 +357,9 @@ export class EasyAvControlReports extends LitElement {
               <ha-icon class="ltek-act chev" icon=${open ? "mdi:chevron-up" : "mdi:chevron-down"}></ha-icon>
             </button>
             <div class="directions">
-              ${(["on", "off"] as const).map((dir) => {
-                const events = list.filter((e) => e.direction === dir);
+              ${(["on", "off", "picture", "signal"] as const).map((dir) => {
+                // A device that was on already says nothing about how long it takes to come up
+                const events = list.filter((e) => e.direction === dir && !e.warm);
                 if (!events.length) return nothing;
                 const s = stats(events.map((e) => ({ seconds: e.seconds, ok: e.result === "ok" })));
                 return html`<div class="direction">
@@ -375,10 +376,10 @@ export class EasyAvControlReports extends LitElement {
   }
 
   private _renderEvents(list: DeviceEvent[]): TemplateResult {
-    const typical = {
-      on: stats(list.filter((e) => e.direction === "on").map((e) => ({ seconds: e.seconds, ok: e.result === "ok" }))).typical,
-      off: stats(list.filter((e) => e.direction === "off").map((e) => ({ seconds: e.seconds, ok: e.result === "ok" }))).typical,
-    };
+    const typical: Record<string, number | null> = {};
+    for (const dir of ["on", "off", "picture", "signal"]) {
+      typical[dir] = stats(list.filter((e) => e.direction === dir && !e.warm).map((e) => ({ seconds: e.seconds, ok: e.result === "ok" }))).typical;
+    }
     return html`<table class="events">
       <thead>
         <tr>
@@ -391,10 +392,14 @@ export class EasyAvControlReports extends LitElement {
       </thead>
       <tbody>
         ${[...list].reverse().map((e) => {
-          const dev = e.result === "ok" ? deviation(e.seconds, typical[e.direction]) : "";
+          const dev = e.result === "ok" && !e.warm ? deviation(e.seconds, typical[e.direction]) : "";
           return html`<tr>
             <td>${this._when(e.at)}</td>
-            <td>${this._t(`rep.dir_${e.direction}`)}</td>
+            <td>
+              ${this._t(`rep.dir_${e.direction}`)}${e.source ? html`<div class="muted">${e.source}</div>` : nothing}${e.warm
+                ? html`<div class="muted">${this._t("rep.warm")}</div>`
+                : nothing}
+            </td>
             <td>
               <b>${duration(e.seconds)}</b>${dev ? html` <span class="dev ${dev.startsWith("+") ? "slow" : "fast"}">${dev}</span>` : nothing}
             </td>

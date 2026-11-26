@@ -397,6 +397,8 @@ class RoomRuntime:
     current: dict[str, Any] | None = None
     # The start or stop being timed for the Reports page (history.py)
     run: RunRecorder | None = None
+    # Device entity -> when this start switched it on (loop time), to time its picture and signal checks
+    switched_on: dict[str, float] = field(default_factory=dict)
 
 
 class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -1152,6 +1154,7 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         total = len(new_devices) + len(checks) + len(steps)
         rt.progress = (0, total)
         rt.run = run = self._recorder(room_id, activity_id, "start", previous)
+        rt.switched_on = {}
         if by := self._triggered.pop(room_id, None):
             run.run["by"] = by
             run.event("started_by", **by)
@@ -1573,6 +1576,7 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 await self._async_power_on(
                     entity_id, context, (device.get(CONF_READY) or {}).get(CONF_TIMEOUT, REACH_TIMEOUT)
                 )
+                rt.switched_on[entity_id] = started
             if source is not None and mode == WAIT_NONE:
                 if turn_on:
                     self.hass.async_create_background_task(
@@ -1613,14 +1617,16 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 raise result
 
     async def _async_check(self, device: dict[str, Any], check: dict[str, Any]) -> None:
-        """Wait until one check is right (debounced), at most its timeout."""
+        """Wait until one check is right (debounced), at most its timeout, and time it for Reports."""
         found = check_source(self.hass, self.profiles, device, check)
         name = self._device_name(device)
         if found is None:
             self._warn(f"{name} has no picture check: pick an entity for its check")
             return
         source, timeout = found
+        began = self.hass.loop.time()
         result, value = await async_wait_for(self.hass, source, GROUP_ON, timeout)
+        self._record_check(device, check, source.entity_id, began, result, value)
         if result == RESULT_OK:
             return
         shown = f", it shows {value}" if value else ""
@@ -1629,6 +1635,28 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if check_failure(device, check) == FAILURE_STOP:
             raise ActivityAborted(message)
         self._warn(message)
+
+    @callback
+    def _record_check(
+        self, device: dict[str, Any], check: dict[str, Any], watched: str, began: float, result: str, value: str | None
+    ) -> None:
+        """How long a device took to show its picture (its profile's check) or signal (a check on an entity of
+        its own, such as the audio stream type): from switching the device on in this start, or from the start
+        of the check when it was on already (``warm``, left out of the typical time)."""
+        rt = _current_room.get()
+        now = self.hass.loop.time()
+        switched = rt.switched_on.get(device[CONF_ENTITY_ID]) if rt is not None else None
+        seconds = now - (switched if switched is not None else began)
+        direction = "signal" if check.get(CONF_ENTITY_ID) else "picture"
+        if rt is not None and rt.run is not None:
+            rt.run.event(
+                "check", device=device[CONF_ENTITY_ID], entity=watched, kind=direction, result=result,
+                seconds=round(seconds, 1), warm=switched is None, **({"value": value} if value else {}),
+            )
+        self._record_event(
+            device, direction, seconds, result, value,
+            extra={"source": watched, **({"warm": True} if switched is None else {})},
+        )
 
     async def _async_wait_picture(self, device: dict[str, Any], step: dict[str, Any]) -> None:
         """Wait until the device shows a picture; a device without a picture check has nothing to wait for."""
@@ -1688,7 +1716,15 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     @callback
     def _record_event(
-        self, device: dict[str, Any], direction: str, seconds: float, result: str, value: str | None, *, slow: bool = False
+        self,
+        device: dict[str, Any],
+        direction: str,
+        seconds: float,
+        result: str,
+        value: str | None,
+        *,
+        slow: bool = False,
+        extra: dict[str, Any] | None = None,
     ) -> None:
         """A device's time for the Reports page, good or not, with the run it belongs to."""
         if (history := history_of(self.hass)) is None:
@@ -1708,6 +1744,8 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             event["value"] = value
         if slow:
             event["slow"] = True
+        if extra:
+            event.update(extra)
         history.add_device_event(device[CONF_ENTITY_ID], event)
 
     def _room_entities(self, room_id: str) -> list[str]:
