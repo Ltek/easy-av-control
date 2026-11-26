@@ -1,5 +1,14 @@
 # Changelog
 
+## v2026.11.26.34
+
+**Added**
+- **The Flow in the panel shows how a running activity is getting on.** While the activity you have open starts, each
+  row's icon turns **yellow** while it is in progress, **green** when it is done and **red** where the start failed;
+  a finished start is all green, and rows still to come are dimmed. Startup colours while it starts, Shutdown while
+  it stops (the tab follows when a run begins). Editing works as before. The colours follow the saved
+  configuration of the running activity: an unsaved change to the Flow can shift them.
+
 ## v2026.11.26.33
 
 **Added**

@@ -132,6 +132,7 @@ export class EasyAvControlFlow extends LitElement {
     _failed: { state: true },
     entryId: { attribute: false },
     live: { attribute: false },
+    run: { attribute: false },
     from: { attribute: false },
     details: { type: Boolean },
     editing: { attribute: false },
@@ -152,6 +153,9 @@ export class EasyAvControlFlow extends LitElement {
   declare entryId?: string;
   /** On the card: the room's run state; the Flow follows it */
   declare live?: Live & { activity?: string | null };
+  /** In the editor: what the room is doing now. Its rows turn yellow, green or red for the activity that runs,
+   *  and nothing else about the editor changes. */
+  declare run?: Live & { activity?: string | null };
   /** On the card: the activity a start switches from */
   declare from?: string;
   /** Entities, actions and notes; off shows only what happens */
@@ -228,6 +232,18 @@ export class EasyAvControlFlow extends LitElement {
       if (!previous || previous.state !== this.live.state || previous.activity !== this.live.activity) {
         if (this.live.state === "starting" || this.live.state === "stopping") this._reached = -1;
         changed.set("_mode", undefined);
+      }
+    } else if (this.run && changed.has("run")) {
+      const previous = changed.get("run") as this["run"];
+      const mine = this.run.activity === this.activityId;
+      const busy = this.run.state === "starting" || this.run.state === "stopping";
+      if (!previous || previous.state !== this.run.state || previous.activity !== this.run.activity) {
+        if (busy && mine) {
+          this._reached = -1;
+          // The run that begins is the one to watch: its tab
+          const mode: Mode = this.run.state === "stopping" ? "stop" : "start";
+          if (mode !== this._mode) this._mode = mode;
+        }
       }
     }
     if (["room", "roomId", "activityId", "_mode", "_from", "from"].some((key) => changed.has(key))) {
@@ -637,11 +653,22 @@ export class EasyAvControlFlow extends LitElement {
     ${!this.live && this.editing === key ? html`<li class="inline"><slot name="edit"></slot></li>` : nothing}`;
   }
 
+  /** The run to colour the editor's rows by: this activity's start (starting, running, failed) on the Startup
+   *  tab, its stop on the Shutdown tab. */
+  private _watchedRun(): (Live & { activity?: string | null }) | undefined {
+    const run = this.run;
+    if (!run || run.activity !== this.activityId) return undefined;
+    if (this._mode === "start" && ["starting", "active", "error"].includes(run.state)) return run;
+    if (this._mode === "stop" && run.state === "stopping") return run;
+    return undefined;
+  }
+
   private _renderRows(rows: Row[]): TemplateResult {
     const under = groups(rows);
     let statuses: RowStatus[] | undefined;
-    if (this.live && ["starting", "stopping", "active", "error"].includes(this.live.state)) {
-      statuses = rowStatuses(rows, this.live, this._reached);
+    const watched = this.live ?? this._watchedRun();
+    if (watched && ["starting", "stopping", "active", "error"].includes(watched.state)) {
+      statuses = rowStatuses(rows, watched, this._reached);
       const active = statuses.lastIndexOf("active");
       if (active > this._reached && !HEADERS.has(rows[active].kind)) this._reached = active;
     }
@@ -892,8 +919,10 @@ export class EasyAvControlFlow extends LitElement {
     li.s-active .icon,
     li.s-active .index,
     li.s-active .mark {
-      color: var(--yellow-color, #ffeb3b);
+      /* Yellow that also shows on the light theme: a deeper yellow with a faint outline */
+      color: #f5b800;
       border-color: currentColor;
+      filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.5));
     }
     li.s-done .icon,
     li.s-done .index,

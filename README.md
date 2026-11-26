@@ -169,196 +169,206 @@ devices, so names and values on yours will differ.
       <img src="screenshots/panel-activity-preview.png" width="100%" alt="panel activity preview">
     </td>
     <td align="center" valign="top">
+      <img src="screenshots/panel-activity-running-light.png" width="100%" alt="panel activity running light">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-activity-running.png" width="100%" alt="panel activity running">
+    </td>
+    <td align="center" valign="top">
       <img src="screenshots/panel-activity-started-by-light.png" width="100%" alt="panel activity started by light">
     </td>
+  </tr>
+  <tr>
     <td align="center" valign="top">
       <img src="screenshots/panel-activity-started-by.png" width="100%" alt="panel activity started by">
     </td>
     <td align="center" valign="top">
       <img src="screenshots/panel-activity.png" width="100%" alt="panel activity">
     </td>
-  </tr>
-  <tr>
     <td align="center" valign="top">
       <img src="screenshots/panel-card-editor-light.png" width="100%" alt="panel card editor light">
     </td>
     <td align="center" valign="top">
       <img src="screenshots/panel-card-editor.png" width="100%" alt="panel card editor">
     </td>
+  </tr>
+  <tr>
     <td align="center" valign="top">
       <img src="screenshots/panel-card-flow-light.png" width="100%" alt="panel card flow light">
     </td>
     <td align="center" valign="top">
       <img src="screenshots/panel-card-flow-live-light.png" width="100%" alt="panel card flow live light">
     </td>
-  </tr>
-  <tr>
     <td align="center" valign="top">
       <img src="screenshots/panel-card-flow-live.png" width="100%" alt="panel card flow live">
     </td>
     <td align="center" valign="top">
       <img src="screenshots/panel-card-flow.png" width="100%" alt="panel card flow">
     </td>
+  </tr>
+  <tr>
     <td align="center" valign="top">
       <img src="screenshots/panel-dark.png" width="100%" alt="panel dark">
     </td>
     <td align="center" valign="top">
       <img src="screenshots/panel-detect-light.png" width="100%" alt="panel detect light">
     </td>
-  </tr>
-  <tr>
     <td align="center" valign="top">
       <img src="screenshots/panel-detect.png" width="100%" alt="panel detect">
     </td>
     <td align="center" valign="top">
       <img src="screenshots/panel-device-light.png" width="100%" alt="panel device light">
     </td>
+  </tr>
+  <tr>
     <td align="center" valign="top">
       <img src="screenshots/panel-device-power-light.png" width="100%" alt="panel device power light">
     </td>
     <td align="center" valign="top">
       <img src="screenshots/panel-device-power-off-light.png" width="100%" alt="panel device power off light">
     </td>
-  </tr>
-  <tr>
     <td align="center" valign="top">
       <img src="screenshots/panel-device-power-off.png" width="100%" alt="panel device power off">
     </td>
     <td align="center" valign="top">
       <img src="screenshots/panel-device-power.png" width="100%" alt="panel device power">
     </td>
+  </tr>
+  <tr>
     <td align="center" valign="top">
       <img src="screenshots/panel-device-state-light.png" width="100%" alt="panel device state light">
     </td>
     <td align="center" valign="top">
       <img src="screenshots/panel-device-state.png" width="100%" alt="panel device state">
     </td>
-  </tr>
-  <tr>
     <td align="center" valign="top">
       <img src="screenshots/panel-device.png" width="100%" alt="panel device">
     </td>
     <td align="center" valign="top">
       <img src="screenshots/panel-devices-light.png" width="100%" alt="panel devices light">
     </td>
+  </tr>
+  <tr>
     <td align="center" valign="top">
       <img src="screenshots/panel-devices.png" width="100%" alt="panel devices">
     </td>
     <td align="center" valign="top">
       <img src="screenshots/panel-guide-light.png" width="100%" alt="panel guide light">
     </td>
-  </tr>
-  <tr>
     <td align="center" valign="top">
       <img src="screenshots/panel-guide.png" width="100%" alt="panel guide">
     </td>
     <td align="center" valign="top">
       <img src="screenshots/panel-notifications-light.png" width="100%" alt="panel notifications light">
     </td>
+  </tr>
+  <tr>
     <td align="center" valign="top">
       <img src="screenshots/panel-notifications.png" width="100%" alt="panel notifications">
     </td>
     <td align="center" valign="top">
       <img src="screenshots/panel-profile-draft-light.png" width="100%" alt="panel profile draft light">
     </td>
-  </tr>
-  <tr>
     <td align="center" valign="top">
       <img src="screenshots/panel-profile-draft.png" width="100%" alt="panel profile draft">
     </td>
     <td align="center" valign="top">
       <img src="screenshots/panel-profile-export-light.png" width="100%" alt="panel profile export light">
     </td>
+  </tr>
+  <tr>
     <td align="center" valign="top">
       <img src="screenshots/panel-profile-export.png" width="100%" alt="panel profile export">
     </td>
     <td align="center" valign="top">
       <img src="screenshots/panel-profile-form-light.png" width="100%" alt="panel profile form light">
     </td>
-  </tr>
-  <tr>
     <td align="center" valign="top">
       <img src="screenshots/panel-profile-form-status-light.png" width="100%" alt="panel profile form status light">
     </td>
     <td align="center" valign="top">
       <img src="screenshots/panel-profile-form-status.png" width="100%" alt="panel profile form status">
     </td>
+  </tr>
+  <tr>
     <td align="center" valign="top">
       <img src="screenshots/panel-profile-form.png" width="100%" alt="panel profile form">
     </td>
     <td align="center" valign="top">
       <img src="screenshots/panel-profile-view-light.png" width="100%" alt="panel profile view light">
     </td>
-  </tr>
-  <tr>
     <td align="center" valign="top">
       <img src="screenshots/panel-profile-view.png" width="100%" alt="panel profile view">
     </td>
     <td align="center" valign="top">
       <img src="screenshots/panel-profiles-light.png" width="100%" alt="panel profiles light">
     </td>
+  </tr>
+  <tr>
     <td align="center" valign="top">
       <img src="screenshots/panel-profiles.png" width="100%" alt="panel profiles">
     </td>
     <td align="center" valign="top">
       <img src="screenshots/panel-quick-start-activities-light.png" width="100%" alt="panel quick start activities light">
     </td>
-  </tr>
-  <tr>
     <td align="center" valign="top">
       <img src="screenshots/panel-quick-start-activities.png" width="100%" alt="panel quick start activities">
     </td>
     <td align="center" valign="top">
       <img src="screenshots/panel-quick-start-light.png" width="100%" alt="panel quick start light">
     </td>
+  </tr>
+  <tr>
     <td align="center" valign="top">
       <img src="screenshots/panel-quick-start.png" width="100%" alt="panel quick start">
     </td>
     <td align="center" valign="top">
       <img src="screenshots/panel-reports-devices-light.png" width="100%" alt="panel reports devices light">
     </td>
-  </tr>
-  <tr>
     <td align="center" valign="top">
       <img src="screenshots/panel-reports-devices.png" width="100%" alt="panel reports devices">
     </td>
     <td align="center" valign="top">
       <img src="screenshots/panel-reports-entities-light.png" width="100%" alt="panel reports entities light">
     </td>
+  </tr>
+  <tr>
     <td align="center" valign="top">
       <img src="screenshots/panel-reports-entities.png" width="100%" alt="panel reports entities">
     </td>
     <td align="center" valign="top">
       <img src="screenshots/panel-reports-runs-light.png" width="100%" alt="panel reports runs light">
     </td>
-  </tr>
-  <tr>
     <td align="center" valign="top">
       <img src="screenshots/panel-reports-runs.png" width="100%" alt="panel reports runs">
     </td>
     <td align="center" valign="top">
       <img src="screenshots/panel-watchdog-light.png" width="100%" alt="panel watchdog light">
     </td>
+  </tr>
+  <tr>
     <td align="center" valign="top">
       <img src="screenshots/panel-watchdog.png" width="100%" alt="panel watchdog">
     </td>
     <td align="center" valign="top">
       <img src="screenshots/panel.png" width="100%" alt="panel">
     </td>
-  </tr>
-  <tr>
     <td align="center" valign="top">
       <img src="screenshots/preview-dark.png" width="100%" alt="preview dark">
     </td>
     <td align="center" valign="top">
       <img src="screenshots/preview.png" width="100%" alt="preview">
     </td>
+  </tr>
+  <tr>
     <td align="center" valign="top">
       <img src="screenshots/profiles-dark.png" width="100%" alt="profiles dark">
     </td>
     <td align="center" valign="top">
       <img src="screenshots/profiles.png" width="100%" alt="profiles">
     </td>
+    <td></td>
+    <td></td>
   </tr>
 </table>
 <!-- SCREENSHOTS:END -->
@@ -460,7 +470,7 @@ The panel edits everything the [configuration](#configuration) below describes:
 - **Devices** — entity and power outlet with Home Assistant's entity picker; status source and profile as fields; own `commands` in a YAML field. Renaming a device ID updates every reference; a device that an activity still uses cannot be deleted.
 - **Header** — a room's and an activity's page start with a header showing the name and the general settings (a room's area and default activity; an activity's room and position). The lock in the header opens them for editing; **Save** there applies and saves them, Cancel drops them, nothing changes while you type. The activities are in the menu under their room, so an activity page has no back button.
 - **Activities** — name, icon, position (in the header), remote button routing; everything a startup and a shutdown do is edited in the activity's Flow. The activity ID is part of the entity IDs and cannot be changed.
-- **Flow** — the activity's editor, at the top of its page. ✎ on a line opens its settings right under it: a device's order, what it waits for before it is turned on, and its own settings; the checks; the actions after start; the actions on start and stop (Home Assistant's action editor, the same as in automations). The trash icon removes a line: a device from the activity, a wait, a check, an action. **+** under the Flow adds a device, a check or an action. A device's waits and actions belong to the activity's Flow, so changing them changes only that activity. The Flow shows what a start, a switch from another activity or a stop does with this configuration, step by step: which outlets and devices are switched with which action, boot times, readiness checks with their timeout and what happens on a timeout, steps, the actions on start and stop, outlets cut in the background, and the earliest and latest time of each row. It follows every change before it is saved; see also [ACTIVITY_FLOW.md](ACTIVITY_FLOW.md).
+- **Flow** — the activity's editor, at the top of its page. ✎ on a line opens its settings right under it: a device's order, what it waits for before it is turned on, and its own settings; the checks; the actions after start; the actions on start and stop (Home Assistant's action editor, the same as in automations). The trash icon removes a line: a device from the activity, a wait, a check, an action. **+** under the Flow adds a device, a check or an action. A device's waits and actions belong to the activity's Flow, so changing them changes only that activity. The Flow shows what a start, a switch from another activity or a stop does with this configuration, step by step: which outlets and devices are switched with which action, boot times, readiness checks with their timeout and what happens on a timeout, steps, the actions on start and stop, outlets cut in the background, and the earliest and latest time of each row. It follows every change before it is saved; see also [ACTIVITY_FLOW.md](ACTIVITY_FLOW.md). While the activity starts or stops, the icons of its rows show how far it is: yellow in progress, green done, red failed (the same as the Flow on the remote control card).
 - **Remote control preview** — on every activity's page: the card as it looks while the activity runs, following the button routing, quick select and extra buttons as you change them. Tapping a button sends nothing but shows which device gets it and what runs there (e.g. `remote.send_command "select"` on the Apple TV's remote). Buttons that would do nothing are listed, and every button group shows its device, whether it was chosen or automatic, and why it is missing.
 - **YAML** — the whole room as YAML, for anything the forms do not cover.
 

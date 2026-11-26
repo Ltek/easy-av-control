@@ -127,6 +127,7 @@ export class EasyAvControlRoomEditor extends LitElement {
     _flowEditing: { state: true },
     _draftStartedBy: { state: true },
     _general: { state: true },
+    _run: { state: true },
     _io: { state: true },
   };
 
@@ -162,6 +163,10 @@ export class EasyAvControlRoomEditor extends LitElement {
   /** The General settings unlocked for editing: whose (the page key), and the values typed so far. Nothing
    *  reaches the room until Save. */
   declare _general?: { key: string; draft: Obj };
+  /** What this room is doing (control/subscribe), for the colours of the Flow while an activity runs */
+  declare _run?: { state: string; current?: { kind: string; device?: string | null; step?: number } | null; activity?: string | null };
+  private _runUnsub?: Promise<() => void>;
+  private _runRoom?: string;
   /** The outlet a device had when it was unticked, to bring back when it is ticked again */
   private _powerMemo = new Map<string, Obj>();
   private _holdTimer?: number;
@@ -200,7 +205,40 @@ export class EasyAvControlRoomEditor extends LitElement {
       .catch(() => undefined);
   }
 
+  disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this._unwatchRun();
+  }
+
+  private _unwatchRun(): void {
+    const unsub = this._runUnsub;
+    this._runUnsub = undefined;
+    this._runRoom = undefined;
+    this._run = undefined;
+    unsub?.then((fn) => fn()).catch(() => undefined);
+  }
+
+  /** Follow the room's state while its page is open; a room not saved yet has none. */
+  private _watchRun(): void {
+    if (!this.hass?.connection || !this.roomId || this._runRoom === this.roomId) return;
+    this._unwatchRun();
+    const room = this.roomId;
+    this._runRoom = room;
+    const sub = this.hass.connection.subscribeMessage<{ state: string; current: unknown; activity: string | null } | null>(
+      (view) => {
+        if (this._runRoom !== room) return;
+        this._run = view ? ({ state: view.state, current: view.current, activity: view.activity } as typeof this._run) : undefined;
+      },
+      { type: "easy_av_control/control/subscribe", room },
+    );
+    sub.catch(() => undefined);
+    this._runUnsub = sub;
+  }
+
   protected willUpdate(changed: Map<string, unknown>): void {
+    if (changed.has("hass") || changed.has("roomId")) {
+      this._watchRun();
+    }
     if (changed.has("room") || changed.has("hass")) {
       this._loadRelated();
     }
@@ -1393,6 +1431,7 @@ export class EasyAvControlRoomEditor extends LitElement {
       .room=${this.room}
       .roomId=${this.roomId}
       .activityId=${id}
+      .run=${this._run}
       .editing=${editing?.key}
       @flow-edit=${(ev: CustomEvent<{ key: string; device?: string; panel: string }>) => {
         this._flowEditing = editing?.key === ev.detail.key ? undefined : ev.detail;

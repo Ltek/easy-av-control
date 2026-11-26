@@ -187,6 +187,18 @@ await settle(800);
 await shotBoth('activity-general-edit');
 await page.locator('easy-av-control-room-editor .gen-bar button', { hasText: 'Cancel' }).click();
 await settle(400);
+// While the activity runs its Flow turns yellow (now), green (done) and red (failed); the run is faked here
+// (the demo devices answer at once)
+await page.locator('easy-av-control-room-editor').evaluate((el) => { el._run = { state: 'starting', activity: 'tv', current: { kind: 'turn_on', device: 'projector' } }; });
+await settle(800);
+await shotBoth('activity-running', async () => {
+  await page.locator('easy-av-control-flow').first().evaluate((el) => el.scrollIntoView({ block: 'start' }));
+  await page.mouse.wheel(0, 120);
+  await settle(300);
+});
+await page.locator('easy-av-control-room-editor').evaluate((el) => { el._run = undefined; });
+await page.evaluate(() => window.scrollTo({ top: 0 }));
+await settle(500);
 await page.locator('easy-av-control-room-editor .head-acts button', { hasText: 'Export' }).click();
 await settle(800);
 await shotBoth('activity-export');
