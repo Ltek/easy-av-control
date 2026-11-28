@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { deviation, duration, laneColor, lanePowerOn, runGroups, stats, type Lane, type Run } from "../src/panel/reports-model";
+import { deviation, duration, laneColor, laneOnAt, laneTook, runGroups, stats, type Lane, type Run } from "../src/panel/reports-model";
 
 test("stats use only the good times; failures are counted", () => {
   const s = stats([
@@ -45,15 +45,29 @@ test("a status is coloured: off red, standby grey, warming yellow, idle blue, on
   assert.equal(laneColor(null, "unknown"), "unavailable");
 });
 
-test("the power-on time is when the status first said on", () => {
+test("the time a device took is from switching it on until its status said on, not from the run's start", () => {
   const lane: Lane = {
-    device: "jvc", name: "JVC", entity_id: "sensor.jvc",
+    device: "shield", name: "Shield", entity_id: "media_player.shield", sent: 38.9,
+    segments: [
+      { start: 0, end: 40.6, value: "off", group: "off" },
+      { start: 40.6, end: 54.2, value: "on", group: "on" },
+    ],
+  };
+  assert.equal(laneOnAt(lane), 40.6);
+  assert.equal(laneTook(lane), 1.7, "40.6 into the run, switched on at 38.9");
+  const jvc: Lane = {
+    device: "jvc", name: "JVC", entity_id: "sensor.jvc", sent: 0,
     segments: [
       { start: 0, end: 0.2, value: "standby", group: "off" },
       { start: 0.2, end: 36.8, value: "warming", group: "starting" },
-      { start: 36.8, end: 52.8, value: "on", group: "on" },
+      { start: 36.8, end: 54.2, value: "on", group: "on" },
     ],
   };
-  assert.equal(lanePowerOn(lane), 36.8);
-  assert.equal(lanePowerOn({ ...lane, segments: lane.segments.slice(0, 2) }), null);
+  assert.equal(laneTook(jvc), 36.8);
+  assert.ok(laneTook(jvc)! > laneTook(lane)!, "the JVC took longer");
+  assert.equal(laneTook({ ...jvc, sent: null }), null, "on already: nothing was sent");
+  const old: Lane = { ...jvc };
+  delete old.sent;
+  assert.equal(laneTook(old), null, "a lane recorded without when it was switched on");
+  assert.equal(laneTook({ ...jvc, segments: jvc.segments.slice(0, 2) }), null, "never said on");
 });

@@ -848,7 +848,7 @@ whole flow varies or one device does.
 
 An expanded run shows a **lane per device**, coloured by what the device's status said while the run went on:
 **off red, standby grey, starting / warming / shutting down yellow, idle blue, on green** (unavailable is hatched
-grey). The number on the right is how long the status took to say on; hover a stretch for its word and times.
+grey). The number on the right is how long the device took from being switched on (the white tick on its lane) until its status said on; hover a stretch for its word and times.
 The checks and the actions after start are not in a device's lane, since they don't hold up any device's
 power-on; they are listed under the lanes. A device that has no status (fixed times only) stays a plain bar. Runs from before the lanes existed get theirs from their trace, the last 30 runs that is; older ones keep their bars. Device times are measured for devices with a status, from the command
 until the status changed to on (or off; the few seconds it has to hold, the debounce, are not counted), only when Easy AV Control switched the device. The checks of an activity are timed as well (picture shown, signal locked). The last 300 runs and 100

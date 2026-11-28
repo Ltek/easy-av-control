@@ -69,6 +69,8 @@ async def test_a_run_keeps_what_each_device_status_said(hass: HomeAssistant, dev
     assert segments[0]["start"] == 0 and all("value" in s and "group" in s and "end" in s for s in segments)
     assert all(a["end"] == b["start"] for a, b in zip(segments, segments[1:], strict=False)), "no gaps"
     assert segments[-1]["end"] >= run["seconds"] and segments[-1]["group"] == "on", segments
+    # When the device was switched on (the flow turned to it), so the time line can say how long it took
+    assert lanes["onkyo"]["sent"] is not None and 0 <= lanes["onkyo"]["sent"] <= run["seconds"], lanes["onkyo"]
 
 
 async def test_runs_from_before_the_lanes_get_them_from_their_trace(hass: HomeAssistant, devices: Devices) -> None:
@@ -84,9 +86,14 @@ async def test_runs_from_before_the_lanes_get_them_from_their_trace(hass: HomeAs
     recorded = run.pop("lanes")
     assert rebuild_lanes(hass, history) == 1
     rebuilt = {lane["device"]: lane for lane in run["lanes"]}
+    assert rebuilt["onkyo"]["sent"] == recorded[0]["sent"], "when it was switched on comes from the trace too"
     assert [s["group"] for s in rebuilt["onkyo"]["segments"]] == [s["group"] for s in recorded[0]["segments"]]
     assert [s["value"] for s in rebuilt["onkyo"]["segments"]] == [s["value"] for s in recorded[0]["segments"]]
     assert rebuild_lanes(hass, history) == 0, "done once"
+    # Lanes from build .35 had no "sent": they are made again from the trace
+    for lane in run["lanes"]:
+        del lane["sent"]
+    assert rebuild_lanes(hass, history) == 1 and all("sent" in lane for lane in run["lanes"])
     # A run whose trace is gone keeps its bars
     old = {"id": "x", "room": "wz", "activity": "tv", "mode": "start", "seconds": 5, "phases": []}
     history.runs.append(old)

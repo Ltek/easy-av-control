@@ -6,7 +6,8 @@ Kept in ``.storage/easy_av_control.history``, shared by all config entries:
   when, how long in total, the result (ok, warning, error, cancelled) and its phases: each device brought up
   or switched off, the checks, the actions after start, the actions on start or stop.
 - **lanes** (in each run): per device, what its status said while the run went on (off, standby, warming, on …)
-  as segments from second to second, for the colours of the time line.
+  as segments from second to second, for the colours of the time line, and when the device was switched on
+  (``sent``), so the time line can say how long it took to report on.
 - **devices**: per device entity, at most ``MAX_DEVICE_SAMPLES`` events: when, on, off, picture or signal (how
   long a check took to pass, counted from switching the device on), how long, the
   result (ok, or what went wrong: timeout, unavailable, …) and which room and activity it was for.
@@ -105,6 +106,15 @@ async def async_get_history(hass: HomeAssistant) -> History:
 def history_of(hass: HomeAssistant) -> History | None:
     """The history if it is loaded (it is once any entry is set up)."""
     return hass.data.get(_DATA)
+
+
+def sent_at(events: list[dict[str, Any]], device: str) -> float | None:
+    """When the run began switching a device on (seconds into the run), from its trace; None when it was on already
+    (nothing was sent). It is the moment the flow turned to the device, a moment before the command itself."""
+    for event in events:
+        if event.get("event") == "doing" and event.get("kind") == "turn_on" and event.get("device") == device:
+            return float(event.get("t") or 0)
+    return None
 
 
 class RunRecorder:
@@ -219,7 +229,7 @@ class RunRecorder:
             segments = lane["segments"]
             for i, seg in enumerate(segments):
                 seg["end"] = segments[i + 1]["start"] if i + 1 < len(segments) else max(end, seg["start"])
-            lanes.append({k: v for k, v in lane.items() if k != "_read"})
+            lanes.append({**{k: v for k, v in lane.items() if k != "_read"}, "sent": sent_at(self.events, lane["device"])})
         if lanes:
             self.run["lanes"] = lanes
         trace = {
@@ -302,7 +312,8 @@ def lanes_from_trace(run: dict[str, Any], trace: dict[str, Any], devices: list[t
                 segments.append({"start": float(event.get("t") or 0), "value": word, "group": group})
         for i, seg in enumerate(segments):
             seg["end"] = segments[i + 1]["start"] if i + 1 < len(segments) else max(end, seg["start"])
-        lanes.append({"device": device, "name": name, "entity_id": entity_id, "segments": segments})
+        lanes.append({"device": device, "name": name, "entity_id": entity_id, "segments": segments,
+                      "sent": sent_at(trace.get("events") or [], device)})
     return lanes
 
 
@@ -316,7 +327,8 @@ def rebuild_lanes(hass: HomeAssistant, history: History) -> int:
     changed = 0
     for run in history.runs:
         trace = history.traces.get(run.get("id", ""))
-        if run.get("lanes") is not None or trace is None:
+        # Lanes from build .35 have no "sent" (when the device was switched on): they are made again
+        if trace is None or (run.get("lanes") is not None and all("sent" in lane for lane in run["lanes"])):
             continue
         coordinator = next((c for c in _coordinators(hass) if run.get("room") in c.rooms), None)
         room = coordinator.rooms.get(run.get("room")) if coordinator is not None else None

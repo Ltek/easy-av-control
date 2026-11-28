@@ -1,5 +1,15 @@
 # Changelog
 
+## v2026.11.28.38
+
+**Fixed**
+- **The time at the right of a lane is how long the device took.** It was how far into the run the status first
+  said on, so a device started late (the Shield, which waits for the JVC) read long though it came on in 2 s, and
+  the JVC read less than the Shield. It is now counted from the moment the device was switched on until its status
+  said on (JVC 36.8 s, Shield 1.7 s). A white tick on each lane marks when the device was switched on. A device that
+  was on already says so, and one that never said on shows a dash.
+- Lanes recorded by the previous build (without that moment) are made again from their trace when Reports opens.
+
 ## v2026.11.28.37
 
 **Changed**

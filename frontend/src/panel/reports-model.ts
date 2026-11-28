@@ -22,6 +22,8 @@ export interface Lane {
   name: string;
   entity_id: string;
   segments: LaneSegment[];
+  /** When the run switched the device on (seconds into the run); null: it was on already. Missing in lanes of build .35. */
+  sent?: number | null;
 }
 
 export type LaneColor = "off" | "standby" | "busy" | "idle" | "on" | "error" | "unavailable";
@@ -51,10 +53,20 @@ export function laneColor(value: string | null | undefined, group: string | null
   }
 }
 
-/** When a lane first said "on" and stayed there (seconds into the run), or null. */
-export function lanePowerOn(lane: Lane): number | null {
+/** When a lane first said "on" (seconds into the run), or null. */
+export function laneOnAt(lane: Lane): number | null {
   const seg = lane.segments.find((s) => laneColor(s.value, s.group) === "on");
   return seg ? seg.start : null;
+}
+
+/**
+ * How long a device took from the moment it was switched on until its status said on, or null when that is
+ * not known: it was on already (``sent`` null), it never said on, or the lane was recorded without ``sent``.
+ */
+export function laneTook(lane: Lane): number | null {
+  const on = laneOnAt(lane);
+  if (on === null || lane.sent === null || lane.sent === undefined) return null;
+  return Math.max(0, Math.round((on - lane.sent) * 10) / 10);
 }
 
 export interface Run {

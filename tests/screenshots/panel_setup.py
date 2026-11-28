@@ -114,6 +114,7 @@ def demo_history():
                 else:
                     segs.append({"start": round(went_on, 1), "end": last, "value": on_word, "group": "on"})
             lanes.append({"device": ph["device"], "name": ph["name"], "entity_id": f"media_player.{ph['device']}",
+                          "sent": round(ph["start"], 1),
                           "segments": [x for x in segs if x["end"] > x["start"]]})
         runs.append({"at": at.isoformat(), "room": "living_room", "room_name": "Living room", "activity": activity,
                      "activity_name": label, "mode": "start", "seconds": round(t, 1), "phases": phases, "lanes": lanes,

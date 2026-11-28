@@ -13,7 +13,8 @@ import {
   deviation,
   duration,
   laneColor,
-  lanePowerOn,
+  laneOnAt,
+  laneTook,
   runGroups,
   runOk,
   stats,
@@ -312,7 +313,9 @@ export class EasyAvControlReports extends LitElement {
   }
 
   private _renderLane(lane: Lane, total: number): TemplateResult {
-    const on = lanePowerOn(lane);
+    const took = laneTook(lane);
+    const on = laneOnAt(lane);
+    const label = took !== null ? duration(took) : lane.sent === null && on !== null ? this._t("rep.lane_on_already") : "–";
     return html`<div class="phase lane">
       <span class="phase-name" title=${lane.entity_id}>${lane.name}</span>
       <span class="track lane-track"
@@ -324,9 +327,15 @@ export class EasyAvControlReports extends LitElement {
             style="left:${(seg.start / total) * 100}%;width:${Math.max(0.4, width)}%"
             title=${`${seg.value}: ${duration(seg.start)} – ${duration(seg.end)} (${duration(seg.end - seg.start)})`}
           ></span>`;
-        })}</span
+        })}${lane.sent !== null && lane.sent !== undefined
+          ? html`<span
+              class="sent"
+              style="left:${(lane.sent / total) * 100}%"
+              title=${this._t("rep.sent_at", { time: duration(lane.sent) })}
+            ></span>`
+          : nothing}</span
       >
-      <span class="phase-time" title=${this._t("rep.on_after")}>${on === null ? "–" : on === 0 ? this._t("rep.lane_on_already") : duration(on)}</span>
+      <span class="phase-time" title=${this._t("rep.took")}>${label}</span>
     </div>`;
   }
 
@@ -721,6 +730,15 @@ export class EasyAvControlReports extends LitElement {
       }
       .c-unavailable {
         background: repeating-linear-gradient(45deg, #5f5f5f, #5f5f5f 3px, #3c3c3c 3px, #3c3c3c 6px);
+      }
+      .sent {
+        position: absolute;
+        top: -1px;
+        bottom: -1px;
+        width: 2px;
+        margin-left: -1px;
+        background: #fff;
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
       }
       .axis .ticks {
         display: flex;
