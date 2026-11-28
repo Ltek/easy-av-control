@@ -591,6 +591,7 @@ async def ws_config_detect(
         source = effective_source(hass, library.profiles, device)
     except vol.Invalid:
         source = None
+    result["timings"] = timing_view(timings_of(hass, entity_id), source.debounce if source is not None else 0.0)
     if source is not None:
         group, value = source.current(hass)
         result["state"] = {

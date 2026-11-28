@@ -1538,7 +1538,7 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """A device nobody waits for: measure its time anyway, for Reports. Never warns."""
         result, value = await async_wait_for(self.hass, source, GROUP_ON, source.timeout_on)
         if result == RESULT_OK:
-            self._record_time(device, "on", self.hass.loop.time() - started)
+            self._record_time(device, "on", self._changed_after(started, source))
         else:
             self._record_event(device, "on", self.hass.loop.time() - started, result, value)
 
@@ -1586,7 +1586,7 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if source is not None and mode != WAIT_TIME:
                 result, value = await self._async_wait_state(rt, device, source, GROUP_ON, source.timeout_on)
                 if result == RESULT_OK and turn_on and not retried:
-                    self._record_time(device, "on", self.hass.loop.time() - started)
+                    self._record_time(device, "on", self._changed_after(started, source))
                 if result != RESULT_OK and turn_on:
                     self._record_event(device, "on", self.hass.loop.time() - started, result, value)
                 if result != RESULT_OK:
@@ -1626,7 +1626,7 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         source, timeout = found
         began = self.hass.loop.time()
         result, value = await async_wait_for(self.hass, source, GROUP_ON, timeout)
-        self._record_check(device, check, source.entity_id, began, result, value)
+        self._record_check(device, check, source.entity_id, began, result, value, source.debounce)
         if result == RESULT_OK:
             return
         shown = f", it shows {value}" if value else ""
@@ -1638,7 +1638,14 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     @callback
     def _record_check(
-        self, device: dict[str, Any], check: dict[str, Any], watched: str, began: float, result: str, value: str | None
+        self,
+        device: dict[str, Any],
+        check: dict[str, Any],
+        watched: str,
+        began: float,
+        result: str,
+        value: str | None,
+        debounce: float = 0.0,
     ) -> None:
         """How long a device took to show its picture (its profile's check) or signal (a check on an entity of
         its own, such as the audio stream type): from switching the device on in this start, or from the start
@@ -1647,6 +1654,8 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         now = self.hass.loop.time()
         switched = rt.switched_on.get(device[CONF_ENTITY_ID]) if rt is not None else None
         seconds = now - (switched if switched is not None else began)
+        if result == RESULT_OK:
+            seconds = max(0.0, seconds - debounce)  # when the status changed, not when it had held long enough
         direction = "signal" if check.get(CONF_ENTITY_ID) else "picture"
         if rt is not None and rt.run is not None:
             rt.run.event(
@@ -1694,6 +1703,12 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return delay, None
         wait = None if source.current(self.hass)[0] == GROUP_OFF and was_off else source
         return (0.0 if mode == WAIT_STATUS else delay), wait
+
+    def _changed_after(self, started: float, source: StateSource | None) -> float:
+        """Seconds from ``started`` until the status changed: the wait ended once it had held for the debounce,
+        so that is taken off. Never below 0 (a status that said so already)."""
+        elapsed = self.hass.loop.time() - started
+        return max(0.0, elapsed - (source.debounce if source is not None else 0.0))
 
     @callback
     def _record_time(self, device: dict[str, Any], direction: str, seconds: float) -> None:
@@ -1868,7 +1883,7 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if result == RESULT_OK:
                 started = self._off_started.pop(device[CONF_ENTITY_ID], None)
                 if started is not None and not retried:
-                    self._record_time(device, "off", self.hass.loop.time() - started)
+                    self._record_time(device, "off", self._changed_after(started, source))
                 return True
             started = self._off_started.get(device[CONF_ENTITY_ID])
             if started is not None:

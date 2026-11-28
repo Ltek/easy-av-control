@@ -1,5 +1,16 @@
 # Changelog
 
+## v2026.11.28.37
+
+**Changed**
+- **Measured times are until the status changed.** A wait is over once the status has held its new value for the
+  debounce (2 s for most devices, 3 to 5 s for picture checks), and the time recorded included those seconds: the
+  JVC read 38.8 s though its status changed to on at 36.8 s. The recorded time (Devices in Reports, Picture shown,
+  Signal locked, the "usually N s" and the slow warning) now leaves the debounce out, so it agrees with the lanes.
+  The wait itself is unchanged, and a suggested timeout adds the debounce back. The times already stored still
+  include it, so a typical time is up to a debounce too long until they roll off (the last 10 per device).
+  A failed wait is recorded as before (it ran to its timeout).
+
 ## v2026.11.28.36
 
 **Changed**

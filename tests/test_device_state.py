@@ -436,6 +436,24 @@ async def test_start_and_stop_record_how_long_the_projector_took(hass: HomeAssis
     assert coordinator._data_to_store()["timings"][JVC] == {"on": on, "off": off}
 
 
+async def test_the_recorded_time_is_when_the_status_changed_not_after_the_debounce(hass: HomeAssistant, theater):
+    coordinator = await setup(hass, theater, _room({"debounce": 0.4}))
+    theater.on("turn_on", JVC, (0.05, JVC_POWER, "warming"), (0.25, JVC_POWER, "on"))
+    await coordinator.async_start_activity("kino", "movie")
+    [seconds] = coordinator.timings[JVC]["on"]
+    # The wait ended about 0.65 s in (the change at 0.25 s plus the 0.4 s it had to hold); 0.65 would be the old time
+    assert 0.2 <= seconds < 0.5, seconds
+
+
+def test_a_suggested_timeout_has_the_debounce_added():
+    from custom_components.easy_av_control import device_timings as dt
+
+    timings = {"on": [40, 42, 44], "off": []}
+    assert dt.view(timings)["on"]["suggested"] == 65
+    assert dt.view(timings, 2)["on"]["suggested"] == 65      # 63 + 2 = 65
+    assert dt.view(timings, 4)["on"]["suggested"] == 70      # 63 + 4 = 67 -> 70
+
+
 async def test_a_device_that_was_already_on_records_nothing(hass: HomeAssistant, theater):
     hass.states.async_set(JVC_POWER, "on")
     coordinator = await setup(hass, theater, _room({"debounce": 0}))
