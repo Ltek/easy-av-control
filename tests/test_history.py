@@ -71,6 +71,28 @@ async def test_a_run_keeps_what_each_device_status_said(hass: HomeAssistant, dev
     assert segments[-1]["end"] >= run["seconds"] and segments[-1]["group"] == "on", segments
 
 
+async def test_runs_from_before_the_lanes_get_them_from_their_trace(hass: HomeAssistant, devices: Devices) -> None:
+    """The lanes of a run kept without them are rebuilt from its trace, the same as when it was recorded."""
+    from custom_components.easy_av_control.history import history_of, rebuild_lanes
+
+    coordinator = await setup(hass, devices, living_room())
+    coordinator.rooms["wz"]["devices"]["onkyo"]["state_source"] = {"on": ["on"], "off": ["off"]}
+    await coordinator.async_start_activity("wz", "tv")
+    await hass.async_block_till_done()
+    history = history_of(hass)
+    [run] = [r for r in history.runs if r["mode"] == "start"]
+    recorded = run.pop("lanes")
+    assert rebuild_lanes(hass, history) == 1
+    rebuilt = {lane["device"]: lane for lane in run["lanes"]}
+    assert [s["group"] for s in rebuilt["onkyo"]["segments"]] == [s["group"] for s in recorded[0]["segments"]]
+    assert [s["value"] for s in rebuilt["onkyo"]["segments"]] == [s["value"] for s in recorded[0]["segments"]]
+    assert rebuild_lanes(hass, history) == 0, "done once"
+    # A run whose trace is gone keeps its bars
+    old = {"id": "x", "room": "wz", "activity": "tv", "mode": "start", "seconds": 5, "phases": []}
+    history.runs.append(old)
+    assert rebuild_lanes(hass, history) == 0 and "lanes" not in old
+
+
 async def test_export_has_the_run_and_its_trace(hass: HomeAssistant, devices: Devices, hass_ws_client) -> None:
     """One run exported: its phases, the trace (what it did, service calls, state changes) and the context."""
     coordinator = await setup(hass, devices, living_room())

@@ -21,6 +21,8 @@ as it is; this is the longer record the Reports page shows.
 """
 from __future__ import annotations
 
+import contextlib
+
 from typing import Any
 
 import voluptuous as vol
@@ -273,6 +275,74 @@ def ws_history_entities(hass: HomeAssistant, connection: websocket_api.ActiveCon
     connection.send_result(msg["id"], {"rooms": rooms})
 
 
+def lanes_from_trace(run: dict[str, Any], trace: dict[str, Any], devices: list[tuple[str, str, str, Any]]) -> list[dict[str, Any]]:
+    """The lanes of a run kept before the lanes were recorded, rebuilt from its trace: the entities' states at
+    the start and every state change after. ``devices``: (device id, name, status entity, read) as lane()."""
+    from types import SimpleNamespace
+
+    def state_of(snapshot: dict[str, Any] | None) -> Any:
+        if not snapshot or snapshot.get("state") is None:
+            return None
+        return SimpleNamespace(state=snapshot["state"], attributes=snapshot.get("attributes") or {})
+
+    end = float(run.get("seconds") or 0)
+    lanes = []
+    for device, name, entity_id, read in devices:
+        start = (trace.get("start") or {}).get(entity_id)
+        if start is None and not any(e.get("entity_id") == entity_id for e in trace.get("events") or []):
+            continue
+        word, group = read(state_of(start))
+        segments = [{"start": 0.0, "value": word, "group": group}]
+        for event in trace.get("events") or []:
+            if event.get("event") != "state" or event.get("entity_id") != entity_id or len(segments) >= MAX_LANE_SEGMENTS:
+                continue
+            state = None if event.get("new") is None else SimpleNamespace(state=event["new"], attributes=event.get("attributes") or {})
+            word, group = read(state)
+            if (word, group) != (segments[-1]["value"], segments[-1]["group"]):
+                segments.append({"start": float(event.get("t") or 0), "value": word, "group": group})
+        for i, seg in enumerate(segments):
+            seg["end"] = segments[i + 1]["start"] if i + 1 < len(segments) else max(end, seg["start"])
+        lanes.append({"device": device, "name": name, "entity_id": entity_id, "segments": segments})
+    return lanes
+
+
+@callback
+def rebuild_lanes(hass: HomeAssistant, history: History) -> int:
+    """Give the runs kept before the lanes existed their lanes, from their traces (the last ``MAX_TRACES`` runs
+    have one), using the devices as they are configured now. A run without a trace, or whose room or devices are
+    gone, keeps its bars. Returns how many runs were changed."""
+    from .websocket import _coordinators
+
+    changed = 0
+    for run in history.runs:
+        trace = history.traces.get(run.get("id", ""))
+        if run.get("lanes") is not None or trace is None:
+            continue
+        coordinator = next((c for c in _coordinators(hass) if run.get("room") in c.rooms), None)
+        room = coordinator.rooms.get(run.get("room")) if coordinator is not None else None
+        activity = (room or {}).get("activities", {}).get(run.get("activity")) if room else None
+        if coordinator is None or room is None or activity is None:
+            continue
+        devices = []
+        for device_id in activity.get("devices", []):
+            device = room["devices"].get(device_id)
+            if device is None:
+                continue
+            with contextlib.suppress(Exception):
+                source = coordinator.state_source(device)
+                if source is not None:
+                    devices.append(
+                        (device_id, coordinator.device_name(device), source.entity_id,
+                         lambda st, src=source: (src.value(st) or (st.state if st is not None else "unknown"), src.group(st)))
+                    )
+        lanes = lanes_from_trace(run, trace, devices)
+        run["lanes"] = lanes     # an empty list: looked at, nothing to show (not tried again)
+        changed += 1
+    if changed:
+        history._save()
+    return changed
+
+
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/history/get"})
 @websocket_api.require_admin
 @websocket_api.async_response
@@ -281,6 +351,7 @@ async def ws_history(
 ) -> None:
     """Every stored run and device event, for the Reports page."""
     history = await async_get_history(hass)
+    rebuild_lanes(hass, history)
     connection.send_result(msg["id"], {"runs": history.runs, "devices": history.devices})
 
 

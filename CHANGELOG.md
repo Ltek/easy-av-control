@@ -1,5 +1,13 @@
 # Changelog
 
+## v2026.11.28.36
+
+**Changed**
+- **Runs from before the colour lanes get them too.** The last 30 runs still have their trace (every state change
+  of the room's entities, with times); when Reports opens, their lanes are rebuilt from it and kept. They use the
+  devices as they are configured now: a device that was removed since, or a run whose room or activity is gone,
+  keeps its bars. Runs older than the last 30 have no trace and keep their bars.
+
 ## v2026.11.28.35
 
 **Changed**
