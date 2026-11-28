@@ -12,10 +12,13 @@ import { ltekChrome, ltekPanelScale, ltekTokens } from "./ltek-styles";
 import {
   deviation,
   duration,
+  laneColor,
+  lanePowerOn,
   runGroups,
   runOk,
   stats,
   type DeviceEvent,
+  type Lane,
   type Run,
   type Stats,
 } from "./reports-model";
@@ -269,11 +272,29 @@ export class EasyAvControlReports extends LitElement {
     </div>`;
   }
 
-  /** The run's phases as bars on one time line. */
+  /**
+   * The run on one time line: first a lane per device, coloured by what its status said (off red, standby
+   * grey, starting yellow, idle blue, on green), then the other phases (outlets, checks, actions after start).
+   * A check or an action after start does not hold up any device's power-on, so it is not in a device's lane.
+   * Runs from before the lanes were kept show every phase as a bar.
+   */
   private _renderPhases(run: Run): TemplateResult {
     const total = Math.max(run.seconds, 0.1);
+    const lanes = run.lanes ?? [];
+    const laneDevices = new Set(lanes.map((l) => l.device));
+    const phases = run.phases.filter((p) => !(p.kind === "device" && laneDevices.has(String(p.device))));
     return html`<div class="phases">
-      ${run.phases.map(
+      ${lanes.length
+        ? html`<div class="lane-legend">
+              ${(["off", "standby", "busy", "idle", "on"] as const).map(
+                (c) => html`<span class="key"><i class="swatch c-${c}"></i>${this._t(`rep.lane_${c}`)}</span>`,
+              )}
+            </div>
+            ${lanes.map((lane) => this._renderLane(lane, total))}
+            ${this._axis(total)}`
+        : nothing}
+      ${phases.length && lanes.length ? html`<p class="ltek-hint lane-then">${this._t("rep.then_hint")}</p>` : nothing}
+      ${phases.map(
         (p) => html`<div class="phase ${p.result === "error" ? "err" : ""}">
           <span class="phase-name">${this._phaseName(p)}</span>
           <span class="track"
@@ -287,6 +308,34 @@ export class EasyAvControlReports extends LitElement {
       )}
       ${run.error ? html`<p class="ltek-error small">${run.error}</p>` : nothing}
       ${(run.warnings ?? []).map((w) => html`<p class="ltek-warn small">${w}</p>`)}
+    </div>`;
+  }
+
+  private _renderLane(lane: Lane, total: number): TemplateResult {
+    const on = lanePowerOn(lane);
+    return html`<div class="phase lane">
+      <span class="phase-name" title=${lane.entity_id}>${lane.name}</span>
+      <span class="track lane-track"
+        >${lane.segments.map((seg) => {
+          const color = laneColor(seg.value, seg.group);
+          const width = ((seg.end - seg.start) / total) * 100;
+          return html`<span
+            class="seg c-${color}"
+            style="left:${(seg.start / total) * 100}%;width:${Math.max(0.4, width)}%"
+            title=${`${seg.value}: ${duration(seg.start)} – ${duration(seg.end)} (${duration(seg.end - seg.start)})`}
+          ></span>`;
+        })}</span
+      >
+      <span class="phase-time" title=${this._t("rep.on_after")}>${on === null ? "–" : on === 0 ? this._t("rep.lane_on_already") : duration(on)}</span>
+    </div>`;
+  }
+
+  /** 0, the middle and the end of the time line. */
+  private _axis(total: number): TemplateResult {
+    return html`<div class="phase axis">
+      <span></span>
+      <span class="ticks"><span>0</span><span>${duration(total / 2)}</span><span>${duration(total)}</span></span>
+      <span></span>
     </div>`;
   }
 
@@ -622,6 +671,65 @@ export class EasyAvControlReports extends LitElement {
         bottom: 0;
         border-radius: 5px;
         background: var(--ltek-c-accent);
+      }
+      .lane-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px var(--ltek-sp-4);
+        font-size: var(--ltek-fs-small);
+        color: var(--secondary-text-color);
+        margin-bottom: 2px;
+      }
+      .lane-legend .key {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .swatch {
+        width: 10px;
+        height: 10px;
+        border-radius: 3px;
+        display: inline-block;
+      }
+      .lane-track {
+        height: 14px;
+        overflow: hidden;
+      }
+      .seg {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        border-radius: 0;
+      }
+      .c-off {
+        background: var(--red-color, #f44336);
+      }
+      .c-standby {
+        background: var(--grey-color, #9e9e9e);
+      }
+      .c-busy {
+        background: #f5b800;
+      }
+      .c-idle {
+        background: var(--blue-color, #2196f3);
+      }
+      .c-on {
+        background: var(--green-color, #4caf50);
+      }
+      .c-error {
+        background: repeating-linear-gradient(45deg, var(--red-color, #f44336), var(--red-color, #f44336) 4px, #7f1d1d 4px, #7f1d1d 8px);
+      }
+      .c-unavailable {
+        background: repeating-linear-gradient(45deg, #5f5f5f, #5f5f5f 3px, #3c3c3c 3px, #3c3c3c 6px);
+      }
+      .axis .ticks {
+        display: flex;
+        justify-content: space-between;
+        color: var(--secondary-text-color);
+        font-variant-numeric: tabular-nums;
+      }
+      .lane-then {
+        margin: var(--ltek-sp-3) 0 0;
       }
       .phase.err .bar {
         background: var(--red-color, #f44336);

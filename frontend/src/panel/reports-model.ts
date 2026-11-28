@@ -10,6 +10,53 @@ export interface Phase {
   [key: string]: unknown;
 }
 
+/** What a device's status said for a stretch of the run (seconds from its start). */
+export interface LaneSegment {
+  start: number;
+  end: number;
+  value: string;
+  group: string;
+}
+export interface Lane {
+  device: string;
+  name: string;
+  entity_id: string;
+  segments: LaneSegment[];
+}
+
+export type LaneColor = "off" | "standby" | "busy" | "idle" | "on" | "error" | "unavailable";
+
+/**
+ * The colour of a status on the time line: off red, standby grey, warming / starting / shutting down yellow,
+ * idle blue, on green. The device's own word decides standby and idle (a profile counts both as off or on);
+ * the rest follows the group the profile puts the word in.
+ */
+export function laneColor(value: string | null | undefined, group: string | null | undefined): LaneColor {
+  const word = String(value ?? "").trim().toLowerCase();
+  if (word === "unavailable" || word === "unknown" || word === "") return "unavailable";
+  if (word === "standby") return "standby";
+  if (word === "idle") return "idle";
+  switch (group) {
+    case "on":
+      return "on";
+    case "starting":
+    case "stopping":
+      return "busy";
+    case "off":
+      return "off";
+    case "error":
+      return "error";
+    default:
+      return "unavailable";
+  }
+}
+
+/** When a lane first said "on" and stayed there (seconds into the run), or null. */
+export function lanePowerOn(lane: Lane): number | null {
+  const seg = lane.segments.find((s) => laneColor(s.value, s.group) === "on");
+  return seg ? seg.start : null;
+}
+
 export interface Run {
   id?: string;
   at: string;
@@ -25,6 +72,8 @@ export interface Run {
   error?: string;
   warnings?: string[];
   phases: Phase[];
+  /** What each device's status said during the run, for the time line (runs from build 2026.11.28 on) */
+  lanes?: Lane[];
 }
 
 export interface DeviceEvent {

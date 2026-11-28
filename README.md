@@ -343,32 +343,36 @@ devices, so names and values on yours will differ.
       <img src="screenshots/panel-reports-runs.png" width="100%" alt="panel reports runs">
     </td>
     <td align="center" valign="top">
-      <img src="screenshots/panel-watchdog-light.png" width="100%" alt="panel watchdog light">
+      <img src="screenshots/panel-reports-startup-light.png" width="100%" alt="panel reports startup light">
     </td>
   </tr>
   <tr>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-reports-startup.png" width="100%" alt="panel reports startup">
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-watchdog-light.png" width="100%" alt="panel watchdog light">
+    </td>
     <td align="center" valign="top">
       <img src="screenshots/panel-watchdog.png" width="100%" alt="panel watchdog">
     </td>
     <td align="center" valign="top">
       <img src="screenshots/panel.png" width="100%" alt="panel">
     </td>
+  </tr>
+  <tr>
     <td align="center" valign="top">
       <img src="screenshots/preview-dark.png" width="100%" alt="preview dark">
     </td>
     <td align="center" valign="top">
       <img src="screenshots/preview.png" width="100%" alt="preview">
     </td>
-  </tr>
-  <tr>
     <td align="center" valign="top">
       <img src="screenshots/profiles-dark.png" width="100%" alt="profiles dark">
     </td>
     <td align="center" valign="top">
       <img src="screenshots/profiles.png" width="100%" alt="profiles">
     </td>
-    <td></td>
-    <td></td>
   </tr>
 </table>
 <!-- SCREENSHOTS:END -->
@@ -840,7 +844,13 @@ A new command cancels whatever runs in the room: a stop during a long start take
 
 **Reports** in the panel's menu shows how long every start and stop took (grouped by room and activity, each run
 with its phases on a time line) and how long each device took to come on and go off, so you can see whether the
-whole flow varies or one device does. Device times are measured for devices with a status, from the command
+whole flow varies or one device does.
+
+An expanded run shows a **lane per device**, coloured by what the device's status said while the run went on:
+**off red, standby grey, starting / warming / shutting down yellow, idle blue, on green** (unavailable is hatched
+grey). The number on the right is how long the status took to say on; hover a stretch for its word and times.
+The checks and the actions after start are not in a device's lane, since they don't hold up any device's
+power-on; they are listed under the lanes. A device that has no status (fixed times only) stays a plain bar. Device times are measured for devices with a status, from the command
 until the status says on (or off), only when Easy AV Control switched the device. The checks of an activity are timed as well (picture shown, signal locked). The last 300 runs and 100
 times per device are kept in `.storage/easy_av_control.history`.
 

@@ -5,6 +5,8 @@ Kept in ``.storage/easy_av_control.history``, shared by all config entries:
 - **runs**, newest last, at most ``MAX_RUNS``: room, activity, start or stop, switching from which activity,
   when, how long in total, the result (ok, warning, error, cancelled) and its phases: each device brought up
   or switched off, the checks, the actions after start, the actions on start or stop.
+- **lanes** (in each run): per device, what its status said while the run went on (off, standby, warming, on …)
+  as segments from second to second, for the colours of the time line.
 - **devices**: per device entity, at most ``MAX_DEVICE_SAMPLES`` events: when, on, off, picture or signal (how
   long a check took to pass, counted from switching the device on), how long, the
   result (ok, or what went wrong: timeout, unavailable, …) and which room and activity it was for.
@@ -38,6 +40,7 @@ MAX_RUNS = 300
 MAX_DEVICE_SAMPLES = 100
 MAX_TRACES = 30
 MAX_TRACE_EVENTS = 2000
+MAX_LANE_SEGMENTS = 60
 _DATA = f"{DOMAIN}_history"
 
 
@@ -116,6 +119,8 @@ class RunRecorder:
         self._entities: list[str] = []
         self._start_states: dict[str, Any] = {}
         self._unsub: Any = None
+        # What each device's status said during the run, for the time line: see lane()
+        self._lanes: list[dict[str, Any]] = []
 
     def event(self, event: str, **data: Any) -> None:
         """One line of the trace: ``event`` is what happened (doing, call, state, warning …)."""
@@ -131,6 +136,7 @@ class RunRecorder:
 
         @callback
         def _changed(event: Any) -> None:
+            self._lane_changed(event.data["entity_id"], event.data.get("new_state"))
             new = event.data.get("new_state")
             old = event.data.get("old_state")
             self.event(
@@ -145,6 +151,26 @@ class RunRecorder:
 
         if self._entities:
             self._unsub = async_track_state_change_event(self._hass, self._entities, _changed)
+
+    def lane(self, device: str, name: str, entity_id: str, read: Any) -> None:
+        """Follow what a device's status says during the run, as segments (start, end, its word for it, and
+        the group: on / starting / stopping / off / error / unknown). ``read(state)`` gives (word, group). Call
+        after watch(): the entity is one of the watched ones."""
+        word, group = read(self._hass.states.get(entity_id))
+        self._lanes.append(
+            {"device": device, "name": name, "entity_id": entity_id, "_read": read,
+             "segments": [{"start": 0.0, "value": word, "group": group}]}
+        )
+
+    @callback
+    def _lane_changed(self, entity_id: str, state: Any) -> None:
+        for lane in self._lanes:
+            if lane["entity_id"] != entity_id or len(lane["segments"]) >= MAX_LANE_SEGMENTS:
+                continue
+            word, group = lane["_read"](state)
+            last = lane["segments"][-1]
+            if (word, group) != (last["value"], last["group"]):
+                lane["segments"].append({"start": self._now(), "value": word, "group": group})
 
     def _snapshot(self, entity_id: str) -> dict[str, Any]:
         state = self._hass.states.get(entity_id)
@@ -185,6 +211,15 @@ class RunRecorder:
             self.run["warnings"] = list(warnings)
             if result == "ok":
                 self.run["result"] = "warning"
+        end = self.run["seconds"]
+        lanes = []
+        for lane in self._lanes:
+            segments = lane["segments"]
+            for i, seg in enumerate(segments):
+                seg["end"] = segments[i + 1]["start"] if i + 1 < len(segments) else max(end, seg["start"])
+            lanes.append({k: v for k, v in lane.items() if k != "_read"})
+        if lanes:
+            self.run["lanes"] = lanes
         trace = {
             "entities": self._entities,
             "start": self._start_states,

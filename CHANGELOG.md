@@ -1,5 +1,16 @@
 # Changelog
 
+## v2026.11.28.35
+
+**Changed**
+- **Reports: the time line of a run shows each device's status.** One lane per device, coloured by what its status
+  said during the run: off red, standby grey, starting / warming / shutting down yellow, idle blue, on green
+  (unavailable hatched). The time on the right is until the status said on (the JVC's warming shows as yellow until
+  it reads on), not how long Easy AV Control spent sending the command, which was 0.3 s for a device it doesn't
+  wait for. The outlets, the checks and the actions after start are listed under the lanes as before; a check is
+  not in a device's lane, because it doesn't hold up any device's power-on. Runs from before this build keep their
+  bars.
+
 ## v2026.11.26.34
 
 **Added**

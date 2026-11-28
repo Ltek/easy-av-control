@@ -53,6 +53,24 @@ async def test_device_times_are_recorded_with_their_run(hass: HomeAssistant, dev
     assert event["seconds"] == 12.3 and event["direction"] == "on" and event["result"] == "ok"
 
 
+async def test_a_run_keeps_what_each_device_status_said(hass: HomeAssistant, devices: Devices) -> None:
+    """The time line's colours: per device, its status as segments with the word it used, over the run."""
+    from custom_components.easy_av_control.history import history_of
+
+    coordinator = await setup(hass, devices, living_room())
+    # Its own status: on or off by the state (the made-up devices have no profile)
+    coordinator.rooms["wz"]["devices"]["onkyo"]["state_source"] = {"on": ["on"], "off": ["off"]}
+    await coordinator.async_start_activity("wz", "tv")
+    await hass.async_block_till_done()
+    [run] = [r for r in history_of(hass).runs if r["mode"] == "start"]
+    lanes = {lane["device"]: lane for lane in run["lanes"]}
+    assert set(lanes) >= {"onkyo"}
+    segments = lanes["onkyo"]["segments"]
+    assert segments[0]["start"] == 0 and all("value" in s and "group" in s and "end" in s for s in segments)
+    assert all(a["end"] == b["start"] for a, b in zip(segments, segments[1:], strict=False)), "no gaps"
+    assert segments[-1]["end"] >= run["seconds"] and segments[-1]["group"] == "on", segments
+
+
 async def test_export_has_the_run_and_its_trace(hass: HomeAssistant, devices: Devices, hass_ws_client) -> None:
     """One run exported: its phases, the trace (what it did, service calls, state changes) and the context."""
     coordinator = await setup(hass, devices, living_room())

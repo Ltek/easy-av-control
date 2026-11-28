@@ -97,8 +97,26 @@ def demo_history():
         if not failed:
             phases.append({"kind": "steps", "start": round(t, 1), "seconds": 1.2})
             t += 1.2
+        # What each device's status said during the run: off (the projector in standby), warming, on
+        lanes, begin = [], 0.4
+        for ph in [p for p in phases if p["kind"] == "device"]:
+            went_on = ph["start"] + ph["seconds"]
+            off_word, on_word = ("standby", "on") if ph["device"] == "projector" else ("off", "on")
+            segs = [{"start": 0.0, "end": round(ph["start"], 1), "value": off_word, "group": "off"},
+                    {"start": round(ph["start"], 1), "end": round(went_on, 1),
+                     "value": "warming" if ph["device"] == "projector" else "starting", "group": "starting"}]
+            if "result" not in ph:
+                last = round(max(t, went_on), 1)
+                if ph["device"] == "apple_tv" and last - went_on > 2:
+                    mid = round(went_on + (last - went_on) / 2, 1)
+                    segs += [{"start": round(went_on, 1), "end": mid, "value": on_word, "group": "on"},
+                             {"start": mid, "end": last, "value": "idle", "group": "on"}]
+                else:
+                    segs.append({"start": round(went_on, 1), "end": last, "value": on_word, "group": "on"})
+            lanes.append({"device": ph["device"], "name": ph["name"], "entity_id": f"media_player.{ph['device']}",
+                          "segments": [x for x in segs if x["end"] > x["start"]]})
         runs.append({"at": at.isoformat(), "room": "living_room", "room_name": "Living room", "activity": activity,
-                     "activity_name": label, "mode": "start", "seconds": round(t, 1), "phases": phases,
+                     "activity_name": label, "mode": "start", "seconds": round(t, 1), "phases": phases, "lanes": lanes,
                      "result": "error" if failed else ("warning" if day == 9 else "ok"),
                      **({"error": "Projector: not on after 90 s, it shows warming"} if failed else {}),
                      **({"warnings": ["Projector took 70 s to come on (usually 40 s)"]} if day == 9 else {})})

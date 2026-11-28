@@ -1829,6 +1829,19 @@ class EasyAVControlCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         room = self.rooms[room_id]
         recorder = self._new_recorder(room_id, room, activity_id, mode, previous)
         recorder.watch(self._room_entities(room_id), lambda e: not self._entity_unavailable(e))
+        # What each of the activity's devices says during the run, for the colours of the time line
+        activity = room[CONF_ACTIVITIES].get(activity_id) or {}
+        for device_id in activity.get(CONF_DEVICES, []):
+            device = room[CONF_DEVICES].get(device_id)
+            source = None
+            if device is not None:
+                with contextlib.suppress(Exception):
+                    source = self.state_source(device)
+            if source is not None:
+                recorder.lane(
+                    device_id, self._device_name(device), source.entity_id,
+                    lambda st, src=source: (src.value(st) or (st.state if st is not None else "unknown"), src.group(st)),
+                )
         recorder.event("begin", mode=mode, activity=activity_id, **({"from": previous} if previous else {}))
         return recorder
 

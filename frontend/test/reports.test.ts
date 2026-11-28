@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { deviation, duration, runGroups, stats, type Run } from "../src/panel/reports-model";
+import { deviation, duration, laneColor, lanePowerOn, runGroups, stats, type Lane, type Run } from "../src/panel/reports-model";
 
 test("stats use only the good times; failures are counted", () => {
   const s = stats([
@@ -29,4 +29,31 @@ test("durations and deviations read well", () => {
   assert.equal(deviation(30, 20), "+50 %");
   assert.equal(deviation(21, 20), "");
   assert.equal(deviation(10, 20), "-50 %");
+});
+
+test("a status is coloured: off red, standby grey, warming yellow, idle blue, on green", () => {
+  assert.equal(laneColor("off", "off"), "off");
+  assert.equal(laneColor("standby", "off"), "standby");
+  assert.equal(laneColor("warming", "starting"), "busy");
+  assert.equal(laneColor("initializing", "starting"), "busy");
+  assert.equal(laneColor("cooling", "stopping"), "busy");
+  assert.equal(laneColor("idle", "on"), "idle");
+  assert.equal(laneColor("on", "on"), "on");
+  assert.equal(laneColor("No Source", "on"), "on", "a Lumagen word that counts as on");
+  assert.equal(laneColor("error", "error"), "error");
+  assert.equal(laneColor("unavailable", "off"), "unavailable");
+  assert.equal(laneColor(null, "unknown"), "unavailable");
+});
+
+test("the power-on time is when the status first said on", () => {
+  const lane: Lane = {
+    device: "jvc", name: "JVC", entity_id: "sensor.jvc",
+    segments: [
+      { start: 0, end: 0.2, value: "standby", group: "off" },
+      { start: 0.2, end: 36.8, value: "warming", group: "starting" },
+      { start: 36.8, end: 52.8, value: "on", group: "on" },
+    ],
+  };
+  assert.equal(lanePowerOn(lane), 36.8);
+  assert.equal(lanePowerOn({ ...lane, segments: lane.segments.slice(0, 2) }), null);
 });

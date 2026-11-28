@@ -128,6 +128,16 @@ await settle(600);
 await page.locator('easy-av-control-reports button.run-row').first().click();
 await settle(600);
 await shotBoth('reports-runs');
+// A startup: a lane per device, coloured by what its status said
+const startups = page.locator('easy-av-control-reports .ltek-item.group', { hasText: 'Startup' }).first();
+await startups.locator('button.row').first().click();
+await settle(600);
+await startups.locator('button.run-row').first().click();
+await settle(600);
+await shotBoth('reports-startup', async () => {
+  await page.locator('easy-av-control-reports .lane-legend').first().evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  await settle(300);
+});
 await page.locator('easy-av-control-reports summary', { hasText: 'Devices' }).click();
 await settle(800);
 await page.locator('easy-av-control-reports details[open] .ltek-item.group button.row').nth(2).click();
